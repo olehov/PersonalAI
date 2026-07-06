@@ -1,0 +1,6 @@
+{
+  "planner_model": "deepseek-r1:8b",
+  "executor_model": "qwen2.5-coder:7b",
+  "case_type": "planner_executor_interaction",
+  "target_repo": "Projects/PersonalAI/personal_ai_mvp/training_examples/benchmark_projects/python_task_cli"
+}

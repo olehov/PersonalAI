@@ -1,0 +1,16 @@
+{
+  "example_id": "curated::Linux/Processes and Signals.md::rewrite",
+  "source": "curated",
+  "quality_tier": "gold",
+  "task": "rewrite_note_to_house_style",
+  "source_note_path": "Linux/Processes and Signals.md",
+  "title": "Processes and Signals",
+  "instruction": "Rewrite this Linux knowledge note into the vault house style. Keep it concise, preserve headings, and normalize internal links to Obsidian format.",
+  "input_markdown": "# Processes and Signals\n## Basics\nProcesses are running program instances managed by the kernel. Signals are asynchronous notifications sent to a process to indicate an event or request a specific action.\n## Useful Signals\n- SIGINT: interrupt from terminal\n- SIGTERM: request graceful termination\n- SIGKILL: force immediate termination\n- SIGSTOP: stop execution\n- SIGCONT: continue execution after stop\n## Practical Commands\n- `ps`, `top`, `htop` for process inspection\n- `kill` and `pkill` for sending signals\n- `jobs`, `bg`, `fg` when shells manage background tasks\n## Why It Matters\nSignal handling is essential for shell workflows, debugging, and automation, especially with [Job Control](/Job Control.md) and [Pipes and Redirection](/Pipes and Redirection.md).\n",
+  "target_markdown": "# Processes and Signals\n\n## Basics\nProcesses are running program instances managed by the kernel. Signals are asynchronous notifications sent to a process to indicate an event or request a specific action.\n\n## Useful Signals\n\n- SIGINT: interrupt from terminal\n- SIGTERM: request graceful termination\n- SIGKILL: force immediate termination\n- SIGSTOP: stop execution\n- SIGCONT: continue execution after stop\n\n## Practical Commands\n\n- `ps`, `top`, `htop` for process inspection\n- `kill` and `pkill` for sending signals\n- `jobs`, `bg`, `fg` when shells manage background tasks\n\n## Why It Matters\nSignal handling is essential for shell workflows, debugging, and automation, especially with [[Job Control]] and [[Pipes and Redirection]].\n",
+  "tags": [
+    "curated",
+    "linux",
+    "obsidian_links"
+  ]
+}

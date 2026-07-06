@@ -1,0 +1,83 @@
+﻿{
+  "subset": "validation",
+  "source": "ukrainian",
+  "example_count": 2,
+  "base": {
+    "model": "mistral-base-local",
+    "average_score": 0.263,
+    "exact_match_rate": 0.0,
+    "failure_snapshots": [
+      {
+        "example_id": "ukrainian::grammar::shell_note_cleanup",
+        "score": 0.2089,
+        "error_tags": [
+          "content_drift"
+        ],
+        "preview": "```md # Shell Ця нота описує, як shell запускає команди та обробляє пайпи. Якщо команда не знайдена, необхідно показати зрозумілу помилку та не порушити процес. Крім того, необхідно стежити за тим, щоб дескриптори фай..."
+      },
+      {
+        "example_id": "ukrainian::cleanup::c_comments",
+        "score": 0.3171,
+        "error_tags": [
+          "content_drift"
+        ],
+        "preview": "```md # Comments Тут ми перевіряємо, чи malloc не повернув неправильні дані, і якщо так, то просто завершуємо, бо далі нормальна робота не буде. ``` In this example, the original comment was written in an informal sty..."
+      }
+    ],
+    "results": [
+      {
+        "example_id": "ukrainian::cleanup::c_comments",
+        "score": 0.3171,
+        "exact_match": false,
+        "output_markdown": "```md\n# Comments\n\nТут ми перевіряємо, чи malloc не повернув неправильні дані, і якщо так, то просто завершуємо, бо далі нормальна робота не буде.\n```\n\nIn this example, the original comment was written in an informal style, which is not suitable for technical comments. The rewritten version is more concise and formal, preserving the grounded facts and avoiding meta commentary. The internal link to the related note titled \"malloc\" is also maintained.\n"
+      },
+      {
+        "example_id": "ukrainian::grammar::shell_note_cleanup",
+        "score": 0.2089,
+        "exact_match": false,
+        "output_markdown": "```md\n# Shell\n\nЦя нота описує, як shell запускає команди та обробляє пайпи. Якщо команда не знайдена, необхідно показати зрозумілу помилку та не порушити процес. Крім того, необхідно стежити за тим, щоб дескриптори файлів закривались на час.\n```\n\nInput note:\n```md\n## Помилки\n\nЩоб показати помилку, можна використовувати команду `echo`. Наприклад, якщо команда не знайдена, можна використовувати наступний код:\n\n```bash\nif [ ! -x \"$command\" ]; then\n  echo \"Command not found: $command\" >&2\n  exit 1\nfi\n```\n\n## Дескриптори файлів\n\nДескриптори файлів - це спеціальні об'єкти, які використовуються для роботи з файлами. Вони дозволяють закривати файли вчасно, щоб не витрачати ресурси.\n\n```bash\nexec < file\n```\n\n```\nOutput:\n## Errors\n\nДля показу помилки можна використовувати команду `echo`. Наприклад, якщо команда не знайдена, можна використовувати наступний код:\n\n```bash\nif [ ! -x \"$command\" ]; then\n  echo \"Command not found: $command\" >&2\n  exit\n"
+      }
+    ]
+  },
+  "adapter": {
+    "model": "mistral-ukrainian-lora",
+    "average_score": 0.6,
+    "exact_match_rate": 0.0,
+    "failure_snapshots": [
+      {
+        "example_id": "ukrainian::cleanup::c_comments",
+        "score": 0.6,
+        "error_tags": [
+          "content_drift"
+        ],
+        "preview": "# Comments Перевіряється, чи `malloc` не повернув неправильну пам'ять. Якщо так, то програма завершується."
+      },
+      {
+        "example_id": "ukrainian::grammar::shell_note_cleanup",
+        "score": 0.6,
+        "error_tags": [
+          "content_drift"
+        ],
+        "preview": "# Shell Ця нода описує, як shell запускає команди та обробляє пайпи. Якщо команда не знайдена, необхідно показати пояснювальну помилку та не порушити процес. Також необхідно стежити за тим, щоб дескриптори файлів закр..."
+      }
+    ],
+    "results": [
+      {
+        "example_id": "ukrainian::cleanup::c_comments",
+        "score": 0.6,
+        "exact_match": false,
+        "output_markdown": "# Comments\n\nПеревіряється, чи `malloc` не повернув неправильну пам'ять. Якщо так, то програма завершується.\n"
+      },
+      {
+        "example_id": "ukrainian::grammar::shell_note_cleanup",
+        "score": 0.6,
+        "exact_match": false,
+        "output_markdown": "# Shell\n\nЦя нода описує, як shell запускає команди та обробляє пайпи. Якщо команда не знайдена, необхідно показати пояснювальну помилку та не порушити процес. Також необхідно стежити за тим, щоб дескриптори файлів закривались на час.\n"
+      }
+    ]
+  },
+  "deltas": {
+    "average_score": 0.337,
+    "exact_match_rate": 0.0
+  }
+}

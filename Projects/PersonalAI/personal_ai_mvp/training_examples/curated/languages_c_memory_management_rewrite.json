@@ -1,0 +1,18 @@
+{
+  "example_id": "curated::Languages/C/Memory Management in C.md::rewrite",
+  "source": "curated",
+  "quality_tier": "gold",
+  "task": "rewrite_note_to_house_style",
+  "source_note_path": "Languages/C/Memory Management in C.md",
+  "title": "Memory Management in C",
+  "instruction": "Rewrite this C memory-management note into the vault house style. Preserve ownership and cleanup sections, keep practical bullets compact, and normalize internal links.",
+  "input_markdown": "# Memory Management in C\n## Basics\nManual memory management in C requires explicit allocation initialization ownership tracking and cleanup.\n## Allocation Rules\n- check the result of `malloc`, `calloc`, and `realloc`\n- use `sizeof(*ptr)` style allocation to reduce type mismatch errors\n- avoid overwriting the original pointer directly with `realloc` results\n## Ownership\n- decide which function allocates and which function frees\n- document transfer of ownership in function contracts\n- prefer one clear owner for each heap allocation\n## Cleanup\n- keep cleanup paths simple and centralized\n- free partially initialized state on failure\n- set pointers to `NULL` after `free` when the pointer may be reused\n## Safer Patterns\n- initialize structs to a known state before partial setup\n- use length aware operations for buffers and strings\n- prefer stack allocation when lifetime and size are small and obvious\n## Common Bugs\n- leaking memory on early returns\n- double free\n- use after free\n- writing past the end of a buffer\n- losing the original allocation on failed `realloc`\n## Related Notes\n- [C Best Practices](/C Best Practices.md)\n- [Error Handling in C](/Error Handling in C.md)\n- [Header Design in C](/Header Design in C.md)\n",
+  "target_markdown": "# Memory Management in C\n\n## Basics\nManual memory management in C requires explicit allocation, initialization, ownership tracking, and cleanup.\n\n## Allocation Rules\n\n- check the result of `malloc`, `calloc`, and `realloc`\n- use `sizeof(*ptr)` style allocation to reduce type mismatch errors\n- avoid overwriting the original pointer directly with `realloc` results\n\n## Ownership\n\n- decide which function allocates and which function frees\n- document transfer of ownership in function contracts\n- prefer one clear owner for each heap allocation\n\n## Cleanup\n\n- keep cleanup paths simple and centralized\n- free partially initialized state on failure\n- set pointers to `NULL` after `free` when the pointer may be reused\n\n## Safer Patterns\n\n- initialize structs to a known state before partial setup\n- use length-aware operations for buffers and strings\n- prefer stack allocation when lifetime and size are small and obvious\n\n## Common Bugs\n\n- leaking memory on early returns\n- double free\n- use-after-free\n- writing past the end of a buffer\n- losing the original allocation on failed `realloc`\n\n## Related Notes\n\n- [[C Best Practices]]\n- [[Error Handling in C]]\n- [[Header Design in C]]\n",
+  "tags": [
+    "curated",
+    "languages",
+    "c",
+    "memory",
+    "obsidian_links"
+  ]
+}

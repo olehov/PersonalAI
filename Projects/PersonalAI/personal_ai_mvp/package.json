@@ -1,0 +1,20 @@
+{
+  "name": "personal-ai-mvp",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "runtime:start": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action start",
+    "runtime:stop": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action stop",
+    "runtime:restart": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action restart",
+    "runtime:status": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action status",
+    "runtime:start:ollama": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action start -Components ollama",
+    "runtime:start:backend": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action start -Components backend",
+    "runtime:start:frontend": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action start -Components frontend",
+    "runtime:stop:ollama": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action stop -Components ollama",
+    "runtime:stop:backend": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action stop -Components backend",
+    "runtime:stop:frontend": "powershell -ExecutionPolicy Bypass -File .\\manage_runtime.ps1 -Action stop -Components frontend",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:preview": "npm --prefix frontend run preview"
+  }
+}

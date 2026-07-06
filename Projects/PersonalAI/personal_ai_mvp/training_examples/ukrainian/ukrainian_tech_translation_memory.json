@@ -1,0 +1,17 @@
+{
+  "example_id": "ukrainian::translation::memory_management",
+  "source": "ukrainian",
+  "quality_tier": "gold",
+  "task": "ukrainian_technical_translation",
+  "source_note_path": "Inbox/Ukrainian Grammar/Memory Translation Draft.md",
+  "title": "Memory Management Translation",
+  "instruction": "Перепиши текст доброю технічною українською. Уникай кальок, але не спрощуй зміст.",
+  "input_markdown": "# Memory Management\n\nMemory leaks happen when allocated memory is not released after it is no longer needed. In C this usually means every malloc path should have one obvious free path.\n",
+  "target_markdown": "# Memory Management\n\nВитік пам'яті виникає тоді, коли виділену пам'ять не звільняють після того, як вона більше не потрібна.\n\nУ C це зазвичай означає, що для кожного шляху з `malloc` має існувати один очевидний шлях із `free`.\n",
+  "tags": [
+    "ukrainian",
+    "translation",
+    "technical_style",
+    "memory"
+  ]
+}

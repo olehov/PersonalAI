@@ -1,0 +1,17 @@
+{
+  "example_id": "ukrainian::translation::cli_docs",
+  "source": "ukrainian",
+  "quality_tier": "gold",
+  "task": "ukrainian_documentation_translation",
+  "source_note_path": "Inbox/Ukrainian Grammar/CLI Docs Draft.md",
+  "title": "CLI Documentation Translation",
+  "instruction": "Переклади й адаптуй текст українською мовою для технічної документації. Формулювання мають бути короткими та інструктивними.",
+  "input_markdown": "# CLI\n\nUse this command to reload the local index before asking a new question. This helps keep the retrieval context aligned with the latest vault state.\n",
+  "target_markdown": "# CLI\n\nВикористовуй цю команду, щоб перезавантажити локальний індекс перед новим запитом.\n\nЦе допомагає узгодити retrieval context з актуальним станом vault.\n",
+  "tags": [
+    "ukrainian",
+    "translation",
+    "documentation",
+    "cli"
+  ]
+}

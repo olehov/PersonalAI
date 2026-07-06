@@ -1,0 +1,18 @@
+{
+  "example_id": "ukrainian::normalization::threads",
+  "source": "ukrainian",
+  "quality_tier": "gold",
+  "task": "ukrainian_surzhyk_normalization",
+  "source_note_path": "Inbox/Ukrainian Grammar/Threads Draft.md",
+  "title": "Threads and Synchronization",
+  "instruction": "Нормалізуй український текст. Замінюй суржик і невдалі кальки на природні формулювання, зберігаючи технічну точність.",
+  "input_markdown": "# Threads and Synchronization\n\nКоли декілька потоків працюють з одними і тими же даними, можуть виникати гонки. Щоб цього ізбіжати, треба использовать mutex або інші примітиви синхронізації.\n",
+  "target_markdown": "# Threads and Synchronization\n\nКоли кілька потоків працюють з одними й тими самими даними, можуть виникати race conditions.\n\nЩоб цього уникнути, потрібно використовувати `mutex` або інші примітиви синхронізації.\n",
+  "tags": [
+    "ukrainian",
+    "normalization",
+    "surzhyk",
+    "threads",
+    "concurrency"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "example_id": "ukrainian::grammar::shell_note_cleanup",
+  "source": "ukrainian",
+  "quality_tier": "gold",
+  "task": "ukrainian_grammar_cleanup",
+  "source_note_path": "Inbox/Ukrainian Grammar/Shell Note Draft.md",
+  "title": "Shell Note Grammar Cleanup",
+  "instruction": "Виправ текст українською мовою. Прибери русизми, виправ граматику, пунктуацію та узгодження, але збережи технічний зміст.",
+  "input_markdown": "# Shell\n\nЦя нода описує як шелл запускає команди і обробляє пайпи. Якщо команда не знайдена, треба показувати понятну помилку і не ламати весь процес. Також треба слідкувати за тим, щоб дескриптори файлів закривались вчасно.\n",
+  "target_markdown": "# Shell\n\nЦя нотатка описує, як shell запускає команди та обробляє канали.\n\nЯкщо команду не знайдено, потрібно показувати зрозуміле повідомлення про помилку й не ламати весь процес.\n\nТакож потрібно стежити за тим, щоб файлові дескриптори закривалися вчасно.\n",
+  "tags": [
+    "ukrainian",
+    "grammar",
+    "punctuation",
+    "technical_style",
+    "shell"
+  ]
+}

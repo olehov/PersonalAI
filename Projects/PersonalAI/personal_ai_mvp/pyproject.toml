@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personal-ai"
+version = "0.1.0"
+description = "Local-first AI developer assistant MVP for Obsidian knowledge access."
+readme = "PersonalAI MVP Overview.md"
+requires-python = ">=3.10"
+
+[project.scripts]
+personal-ai = "personal_ai.cli:main"
+personal-ai-web = "personal_ai.web_ui:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

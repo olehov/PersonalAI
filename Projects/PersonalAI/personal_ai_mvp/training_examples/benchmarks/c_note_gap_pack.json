@@ -1,0 +1,33 @@
+{
+  "pack_id": "c-note-gap-v1",
+  "title": "C Knowledge Gap Note Draft Pack",
+  "description": "Compare local models on identifying one missing C topic and drafting one grounded Obsidian note without inventing graph links.",
+  "tasks": [
+    {
+      "task_id": "c-missing-note-draft",
+      "category": "knowledge_gap_note_drafting",
+      "title": "Draft one missing C note",
+      "objective": "Measure whether the model can inspect the current C note cluster, identify one important missing topic, and draft one new note in the existing vault style with disciplined Obsidian links.",
+      "workflow": "ask",
+      "scope_dirs": [
+        "Languages/C"
+      ],
+      "prompt": "Inspect the existing notes under Languages/C and identify exactly one high-value missing topic that is not already covered as its own note. You are not allowed to invent that the note already exists.\n\nExisting note titles you may link to if relevant:\n- Binary Data and Endianness in C\n- Build and Warnings in C\n- C Best Practices\n- C Preprocessor in Practice\n- Command-Line Arguments in C\n- Error Handling in C\n- File IO in C\n- Header Design in C\n- Integer Types and Conversions in C\n- Memory Management in C\n- Memory Ownership Patterns in C\n- Opaque Pointers and Handles in C\n- Parsing and Validation in C\n- Pointers and Arrays in C\n- Resource Lifetime and Cleanup in C\n- Strings in C\n- Struct Layout and Serialization in C\n- Testing C Code\n- Undefined Behavior in C\n\nReturn exactly three sections in this order:\n1. Missing Topic: <short title>\n2. Why This Gap Matters: <2-4 concise sentences>\n3. Draft Note: <raw markdown for the new note>\n\nRequirements for the draft note:\n- The note must start with a single H1 title.\n- Include a short Basics section.\n- Include 2 to 5 compact topic sections or bullet groups.\n- Include a final ## Related Notes section.\n- Use Obsidian links like [[C Best Practices]].\n- Only link to titles from the allowed list above.\n- Do not invent path-style links.\n- Do not wrap the note in code fences.\n- Keep the note concise and practical, matching the current house style in Languages/C.",
+      "expected_signals": [
+        "chooses a topic not already present as its own note",
+        "returns one complete markdown note draft",
+        "uses only allowed Obsidian links",
+        "matches the compact practical style of the C cluster"
+      ],
+      "anti_signals": [
+        "suggests a topic that already exists as a note",
+        "invents unsupported note links",
+        "returns generic essay-style explanation instead of a note",
+        "wraps the draft in code fences"
+      ],
+      "notes": [
+        "Use this task to compare gap detection, graph discipline, and note-writing quality across local models."
+      ]
+    }
+  ]
+}

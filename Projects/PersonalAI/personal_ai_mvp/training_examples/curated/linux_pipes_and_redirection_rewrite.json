@@ -1,0 +1,17 @@
+{
+  "example_id": "curated::Linux/Pipes and Redirection.md::rewrite",
+  "source": "curated",
+  "quality_tier": "gold",
+  "task": "rewrite_note_to_house_style",
+  "source_note_path": "Linux/Pipes and Redirection.md",
+  "title": "Pipes and Redirection",
+  "instruction": "Rewrite this Linux note into the vault house style. Preserve heading structure, keep examples compact, and normalize related-note links to Obsidian format.",
+  "input_markdown": "# Pipes and Redirection\n## Basics\nPipes and redirection are shell features for connecting command input and output streams.\n## Redirection\n### Standard Streams\n- standard input: `stdin`\n- standard output: `stdout`\n- standard error: `stderr`\n### Common Forms\n- `>` write output to a file\n- `>>` append output to a file\n- `<` read input from a file\n- `2>` redirect standard error\n## Pipes\nThe pipe operator `|` sends the output of one command to the input of another command.\nExamples:\n- `ps aux | grep python`\n- `journalctl -u nginx | less`\n## Why It Matters\nPipes and redirection are essential for debugging running services, filtering logs, and composing CLI workflows around [Processes and Signals](/Processes and Signals.md) and [Systemd](/Systemd.md).\n## Related Notes\n- [Processes and Signals](/Processes and Signals.md)\n- [Systemd](/Systemd.md)\n- [SSH](/SSH.md)\n- [Retries and Timeouts](/Retries and Timeouts.md)\n",
+  "target_markdown": "# Pipes and Redirection\n\n## Basics\nPipes and redirection are shell features for connecting command input and output streams.\n\n## Redirection\n\n### Standard Streams\n\n- standard input: `stdin`\n- standard output: `stdout`\n- standard error: `stderr`\n\n### Common Forms\n\n- `>` write output to a file\n- `>>` append output to a file\n- `<` read input from a file\n- `2>` redirect standard error\n\n## Pipes\nThe pipe operator `|` sends the output of one command to the input of another command.\n\nExamples:\n\n- `ps aux | grep python`\n- `journalctl -u nginx | less`\n\n## Why It Matters\nPipes and redirection are essential for debugging running services, filtering logs, and composing CLI workflows around [[Processes and Signals]] and [[Systemd]].\n\n## Related Notes\n\n- [[Processes and Signals]]\n- [[Systemd]]\n- [[SSH]]\n- [[Retries and Timeouts]]\n",
+  "tags": [
+    "curated",
+    "linux",
+    "obsidian_links",
+    "examples"
+  ]
+}
