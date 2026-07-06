@@ -3,6 +3,7 @@
 .codex/
 .agents/
 .trash/
+Projects/
 
 *.sqlite3
 *.db
