@@ -1,0 +1,17 @@
+{
+  "example_id": "curated::Projects/PersonalAI/Vision.md::rewrite",
+  "source": "curated",
+  "quality_tier": "gold",
+  "task": "rewrite_note_to_house_style",
+  "source_note_path": "Projects/PersonalAI/Vision.md",
+  "title": "Personal AI Developer Assistant",
+  "instruction": "Rewrite this project vision note into the vault house style. Preserve the intro line plus bullet-list structure and keep the wording concise.",
+  "input_markdown": "# Personal AI Developer Assistant\n## Goal\nBuild a local AI assistant that can:\n- write code\n- learn from previous projects\n- create new notes\n- update existing notes\n- refactor knowledge\n- search personal knowledge base\n- explain previous solutions\n## Sources of knowledge\n- Obsidian Vault\n- ServerX\n- Inception\n- 42 School projects\n- LeetCode solutions\n- Future projects\n## Long term vision\nThe assistant should gradually improve the knowledge base by:\n- creating notes\n- updating notes\n- linking notes\n- summarizing experience\n- extracting patterns\n",
+  "target_markdown": "# Personal AI Developer Assistant\n\n## Goal\n\nBuild a local AI assistant that can:\n\n- write code\n- learn from previous projects\n- create new notes\n- update existing notes\n- refactor knowledge\n- search personal knowledge base\n- explain previous solutions\n\n## Sources of knowledge\n\n- Obsidian Vault\n- ServerX\n- Inception\n- 42 School projects\n- LeetCode solutions\n- Future projects\n\n## Long-term vision\n\nThe assistant should gradually improve the knowledge base by:\n\n- creating notes\n- updating notes\n- linking notes\n- summarizing experience\n- extracting patterns\n",
+  "tags": [
+    "curated",
+    "projects",
+    "intro_plus_bullets",
+    "vision"
+  ]
+}

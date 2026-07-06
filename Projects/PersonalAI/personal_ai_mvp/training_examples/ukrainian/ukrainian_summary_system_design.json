@@ -1,0 +1,17 @@
+{
+  "example_id": "ukrainian::summary::system_design",
+  "source": "ukrainian",
+  "quality_tier": "gold",
+  "task": "ukrainian_technical_summary",
+  "source_note_path": "Inbox/Ukrainian Grammar/System Design Summary Draft.md",
+  "title": "System Design Summary",
+  "instruction": "Перепиши текст як короткий технічний підсумок українською мовою. Прибери повтори й зроби формулювання чіткішими.",
+  "input_markdown": "# System Design\n\nОсновна ідея тут в тому що ми розділяємо читання запис і індексацію на різні частини системи, бо інакше все буде дуже сильно зв'язано між собою і потім буде тяжко розширяти.\n",
+  "target_markdown": "# System Design\n\nОсновна ідея полягає в тому, щоб розділити читання, запис і індексацію на окремі частини системи.\n\nТакий підхід зменшує зв'язаність компонентів і спрощує подальше розширення архітектури.\n",
+  "tags": [
+    "ukrainian",
+    "summary",
+    "system_design",
+    "architecture"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "pack_id": "planning-role-v1",
+  "title": "Planning Role Benchmark Pack",
+  "description": "Repeatable benchmark task for comparing how local models reprioritize PersonalAI work and produce a grounded next-step plan.",
+  "tasks": [
+    {
+      "task_id": "personalai-next-step-planning",
+      "category": "project_planning",
+      "title": "Reprioritize the next PersonalAI development round",
+      "objective": "Measure whether the model can read the current project notes, avoid stale roadmap drift, and produce a narrow prioritized plan for the next development round.",
+      "workflow": "agent",
+      "scope_dirs": [
+        "Projects/PersonalAI",
+        "Projects/PersonalAI/personal_ai_mvp"
+      ],
+      "prompt": "Inspect the current PersonalAI project state using the roadmap and MVP notes. Reassess what the next development round should focus on right now.\n\nRequirements:\n- stay grounded in the current notes and current implementation state\n- do not pretend files were changed, tests were run, or features exist unless the notes support that\n- prefer a narrow and sequenced plan over a broad wishlist\n- explicitly reprioritize if some previously planned work now has lower value than another task\n- optimize for the next real development round, not the long-term vision only\n\nResponse goals:\n- identify the most important next milestone\n- list the next 3 to 5 concrete steps in order\n- explain why these steps come before other plausible work\n- include validation checkpoints\n- keep the plan actionable for a coding agent\n\nImportant:\n- if benchmark or model-role evaluation should come before a larger feature, say so explicitly\n- if planning and implementation should be separated across different models, say how\n- do not output code",
+      "expected_signals": [
+        "references current roadmap or current implementation state",
+        "returns a narrow ordered plan",
+        "includes validation checkpoints",
+        "reprioritizes instead of repeating a generic wishlist",
+        "stays honest about current status"
+      ],
+      "anti_signals": [
+        "generic AI assistant roadmap advice",
+        "claims code or tests were executed",
+        "ignores current benchmark and evaluation work",
+        "returns a huge unsorted backlog"
+      ],
+      "notes": [
+        "Use this task to compare which model is the best fit for planner duty."
+      ]
+    }
+  ]
+}

@@ -3,7 +3,10 @@
 .codex/
 .agents/
 .trash/
-Projects/
+Projects/Homelab/
+Projects/Inception/
+Projects/Minishell/
+Projects/ServerX/
 
 *.sqlite3
 *.db

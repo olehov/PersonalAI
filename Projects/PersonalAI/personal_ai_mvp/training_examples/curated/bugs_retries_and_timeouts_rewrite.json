@@ -1,0 +1,17 @@
+{
+  "example_id": "curated::Bugs/Retries and Timeouts.md::rewrite",
+  "source": "curated",
+  "quality_tier": "gold",
+  "task": "rewrite_note_to_house_style",
+  "source_note_path": "Bugs/Retries and Timeouts.md",
+  "title": "Retries and Timeouts",
+  "instruction": "Rewrite this engineering note into the vault house style. Keep practical bullets, avoid filler, and preserve related-note links.",
+  "input_markdown": "# Retries and Timeouts\n## Basics\nRetries can improve resilience for transient failures, but they can also amplify load and create cascading failures when combined with weak timeout policies.\n## Core Risks\n- retry storms during outages\n- duplicated work when operations are not idempotent\n- increased queue pressure and latency\n## Good Practices\n- set explicit timeouts\n- retry only transient errors\n- use backoff and jitter\n- consider idempotency before retrying requests\n## Related Notes\n- [Queues and Backpressure](/Queues and Backpressure.md)\n- [HTTP](/HTTP.md)\n- [Observability](/Observability.md)\n",
+  "target_markdown": "# Retries and Timeouts\n\n## Basics\nRetries can improve resilience for transient failures, but they can also amplify load and create cascading failures when combined with weak timeout policies.\n\n## Core Risks\n\n- retry storms during outages\n- duplicated work when operations are not idempotent\n- increased queue pressure and latency\n\n## Good Practices\n\n- set explicit timeouts\n- retry only transient errors\n- use backoff and jitter\n- consider idempotency before retrying requests\n\n## Related Notes\n\n- [[Queues and Backpressure]]\n- [[HTTP]]\n- [[Observability]]\n",
+  "tags": [
+    "curated",
+    "bugs",
+    "obsidian_links",
+    "practical_bullets"
+  ]
+}

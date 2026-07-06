@@ -1,0 +1,17 @@
+{
+  "example_id": "ukrainian::terminology::networking",
+  "source": "ukrainian",
+  "quality_tier": "gold",
+  "task": "ukrainian_technical_terminology_normalization",
+  "source_note_path": "Inbox/Ukrainian Grammar/Networking Terms Draft.md",
+  "title": "Networking Terminology",
+  "instruction": "Нормалізуй технічну українську термінологію. Уникай невдалих кальок, але не прибирай загальновживані англійські терміни, якщо вони доречні.",
+  "input_markdown": "# Networking\n\nКлієнт робить запрос на сервер, сервер відправляє отвіт, а потім соединення або закривається або переходить в keep-alive режим.\n",
+  "target_markdown": "# Networking\n\nКлієнт надсилає запит до сервера, сервер повертає відповідь, а потім з'єднання або закривається, або переходить у режим `keep-alive`.\n",
+  "tags": [
+    "ukrainian",
+    "terminology",
+    "networking",
+    "normalization"
+  ]
+}

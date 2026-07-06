@@ -1,0 +1,12 @@
+You are working inside an empty local project folder for a 42 minishell implementation.
+
+Create a realistic initial folder and file tree for the mandatory part of minishell.
+
+Requirements:
+- C project
+- modular structure
+- parser, executor, builtins, signals, and shared headers should be separated
+- avoid pretending the whole shell is implemented
+- if safe runtime writes are available, create the scaffold tree under a safe isolated directory
+
+Focus on structure quality, not on claiming completion.

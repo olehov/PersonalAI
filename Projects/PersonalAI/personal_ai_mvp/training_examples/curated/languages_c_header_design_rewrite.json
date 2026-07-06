@@ -1,0 +1,18 @@
+{
+  "example_id": "curated::Languages/C/Header Design in C.md::rewrite",
+  "source": "curated",
+  "quality_tier": "gold",
+  "task": "rewrite_note_to_house_style",
+  "source_note_path": "Languages/C/Header Design in C.md",
+  "title": "Header Design in C",
+  "instruction": "Rewrite this C header-design note into the vault house style. Preserve interface and include-safety sections, keep bullets compact, and normalize internal links.",
+  "input_markdown": "# Header Design in C\n## Basics\nGood C headers expose stable interfaces minimize dependencies and make ownership and mutability obvious.\n## Structure\n- keep declarations in headers and definitions in source files\n- include only what is required by the public interface\n- prefer forward declarations when full type definitions are not needed\n## Interface Clarity\n- use descriptive type and function names\n- mark read only pointer parameters as `const`\n- document who owns returned pointers and who must free them\n## Dependency Control\n- avoid leaking internal implementation details into public headers\n- keep macro usage narrow and well named\n- reduce transitive includes to improve compile times and coupling\n## Include Safety\n- use include guards or `#pragma once`\n- make headers safe to include from multiple translation units\n- ensure a header can compile after being included on its own\n## Common Mistakes\n- exposing internal struct layout without a reason\n- putting non `static` function definitions in headers\n- depending on include order\n- using macros where typed constants or functions are clearer\n## Related Notes\n- [C Best Practices](/C Best Practices.md)\n- [Memory Management in C](/Memory Management in C.md)\n- [Coding Style](/Coding Style.md)\n",
+  "target_markdown": "# Header Design in C\n\n## Basics\nGood C headers expose stable interfaces, minimize dependencies, and make ownership and mutability obvious.\n\n## Structure\n\n- keep declarations in headers and definitions in source files\n- include only what is required by the public interface\n- prefer forward declarations when full type definitions are not needed\n\n## Interface Clarity\n\n- use descriptive type and function names\n- mark read-only pointer parameters as `const`\n- document who owns returned pointers and who must free them\n\n## Dependency Control\n\n- avoid leaking internal implementation details into public headers\n- keep macro usage narrow and well named\n- reduce transitive includes to improve compile times and coupling\n\n## Include Safety\n\n- use include guards or `#pragma once`\n- make headers safe to include from multiple translation units\n- ensure a header can compile after being included on its own\n\n## Common Mistakes\n\n- exposing internal struct layout without a reason\n- putting non-`static` function definitions in headers\n- depending on include order\n- using macros where typed constants or functions are clearer\n\n## Related Notes\n\n- [[C Best Practices]]\n- [[Memory Management in C]]\n- [[Coding Style]]\n",
+  "tags": [
+    "curated",
+    "languages",
+    "c",
+    "headers",
+    "obsidian_links"
+  ]
+}

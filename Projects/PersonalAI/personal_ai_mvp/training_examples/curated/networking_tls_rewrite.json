@@ -1,0 +1,17 @@
+{
+  "example_id": "curated::Networking/TLS.md::rewrite",
+  "source": "curated",
+  "quality_tier": "gold",
+  "task": "rewrite_note_to_house_style",
+  "source_note_path": "Networking/TLS.md",
+  "title": "TLS",
+  "instruction": "Rewrite this networking note into the vault house style. Keep operational concerns concise, preserve protocol relationship sections, and normalize Obsidian links.",
+  "input_markdown": "# TLS\n## Basics\nTLS, Transport Layer Security, provides encryption, integrity and peer authentication for network communication.\n## What TLS Adds\n- confidentiality through encryption\n- integrity checks for transmitted data\n- certificate based server authentication\n## Common Use Cases\n- HTTPS for secure web traffic over [HTTP](/HTTP.md)\n- encrypted API communication\n- secure database and service to service connections\n## Relationship to Other Protocols\nTLS usually runs on top of reliable transport such as [TCP](/TCP and UDP.md) and is commonly layered under protocols like [HTTP](/HTTP.md).\n## Common Operational Concerns\n- certificate expiration\n- hostname mismatch\n- unsupported protocol or cipher versions\n## Related Notes\n- [HTTP](/HTTP.md)\n- [TCP and UDP](/TCP and UDP.md)\n",
+  "target_markdown": "# TLS\n\n## Basics\nTLS, Transport Layer Security, provides encryption, integrity, and peer authentication for network communication.\n\n## What TLS Adds\n\n- confidentiality through encryption\n- integrity checks for transmitted data\n- certificate-based server authentication\n\n## Common Use Cases\n\n- HTTPS for secure web traffic over [[HTTP]]\n- encrypted API communication\n- secure database and service-to-service connections\n\n## Relationship to Other Protocols\nTLS usually runs on top of reliable transport such as [[TCP and UDP|TCP]] and is commonly layered under protocols like [[HTTP]].\n\n## Common Operational Concerns\n\n- certificate expiration\n- hostname mismatch\n- unsupported protocol or cipher versions\n\n## Related Notes\n\n- [[HTTP]]\n- [[TCP and UDP]]\n",
+  "tags": [
+    "curated",
+    "networking",
+    "obsidian_links",
+    "protocols"
+  ]
+}
