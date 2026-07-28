@@ -24,6 +24,11 @@ The code is split into three layers to keep the core small and extensible:
 - `application`: use-case level logic for querying and navigating indexed knowledge
 - `infrastructure`: file-system and Obsidian-specific parsing concerns
 
+Supporting runtime packages sit alongside those layers:
+
+- `cli_app`: CLI parsing, dispatch, and rendering
+- `web_app`: HTTP API, app bootstrap, and web UI backend wiring
+
 This separation keeps the note model independent from storage details and prepares the project for future additions such as embeddings, Qdrant, Ollama, and autonomous note updates.
 
 ## Package Layout
@@ -32,11 +37,14 @@ This separation keeps the note model independent from storage details and prepar
 personal_ai_mvp/
   pyproject.toml
   PersonalAI MVP Overview.md
-  src/personal_ai/
+  src/
     application/
+    cli_app/
     domain/
     infrastructure/
+    web_app/
   tests/
+  training_examples/
 ```
 
 ## Current Scope
@@ -104,7 +112,7 @@ The project now also includes a JS frontend scaffold in `frontend/` built with R
 Backend:
 
 ```bash
-python -m personal_ai.web_ui --vault "H:\KnowledgeBase\KnowledgeBase"
+cmd /c "set PYTHONPATH=src&& python -m web_app.cli --vault H:\KnowledgeBase\KnowledgeBase"
 ```
 
 Frontend:
@@ -152,6 +160,13 @@ The runtime manager loads `.env`, applies `OLLAMA_HOST` and `OLLAMA_MODELS`, and
 
 The older `start_ollama.ps1` helper still works as a compatibility wrapper for `ollama` only.
 
+Current backend/runtime entrypoints:
+
+- CLI script: `personal-ai` -> `cli_app.entry:main`
+- Web script: `personal-ai-web` -> `web_app.cli:main`
+- Direct module entry: `python -m cli_app.entry`
+- Direct module entry: `python -m web_app.cli`
+
 Current API routes:
 
 - `POST /api/ask`
@@ -185,27 +200,27 @@ The MVP includes a small command-line interface for exploring a vault locally.
 Examples:
 
 ```bash
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" list
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" search architecture
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" related "Projects/PersonalAI/Architecture.md"
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" scan
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json retrieve "heap complexity" --scope-dir Algorithms
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json show "Projects/PersonalAI/Architecture.md"
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json retrieve "how does PersonalAI architecture work"
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json answer "how does PersonalAI architecture work"
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" ask "how does PersonalAI architecture work" --model llama3:latest
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json propose-note --title "Heap" --content-file draft.md --target-dir Algorithms
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json write-note --title "Heap" --content-file draft.md --target-dir Algorithms --approve
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json draft-note --title "Heap" --instruction "Create a concise note about heap basics and operations." --target-dir Algorithms --scope-dir Algorithms --model llama3:latest
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json draft-write-note --title "Heap" --instruction "Update the note with complexity details." --target-dir Algorithms --scope-dir Algorithms --model llama3:latest --approve
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json maintenance
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json maintenance-draft --note "Projects/PersonalAI/Technology Stack.md" --kind sparse_note --model llama3:latest
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json maintenance-draft-write --note "Projects/PersonalAI/Technology Stack.md" --kind sparse_note --model llama3:latest --approve
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json training-bundle --source curated --model-family mistral
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json benchmark-pack
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json benchmark-run --task-id execution-honesty-minishell-build --model deepseek-r1:8b
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json benchmark-history --limit 10
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json benchmark-compare --task-id repo-analysis-minishell-layout --model gemma:latest --model deepseek-r1:8b
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase list"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase search architecture"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase related Projects/PersonalAI/Architecture.md"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase scan"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json retrieve \"heap complexity\" --scope-dir Algorithms"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json show Projects/PersonalAI/Architecture.md"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json retrieve \"how does PersonalAI architecture work\""
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json answer \"how does PersonalAI architecture work\""
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase ask \"how does PersonalAI architecture work\" --model llama3:latest"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json propose-note --title Heap --content-file draft.md --target-dir Algorithms"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json write-note --title Heap --content-file draft.md --target-dir Algorithms --approve"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json draft-note --title Heap --instruction \"Create a concise note about heap basics and operations.\" --target-dir Algorithms --scope-dir Algorithms --model llama3:latest"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json draft-write-note --title Heap --instruction \"Update the note with complexity details.\" --target-dir Algorithms --scope-dir Algorithms --model llama3:latest --approve"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json maintenance"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json maintenance-draft --note Projects/PersonalAI/Technology Stack.md --kind sparse_note --model llama3:latest"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json maintenance-draft-write --note Projects/PersonalAI/Technology Stack.md --kind sparse_note --model llama3:latest --approve"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json training-bundle --source curated --model-family mistral"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-pack"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-run --task-id execution-honesty-minishell-build --model deepseek-r1:8b"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-history --limit 10"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-compare --task-id repo-analysis-minishell-layout --model gemma:latest --model deepseek-r1:8b"
 ```
 
 Use `--format json` when the CLI output is intended for another tool or agent runtime.
@@ -225,11 +240,11 @@ Use it to review repeatable tasks for:
 Examples:
 
 ```bash
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" benchmark-pack
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json benchmark-pack --task-id execution-honesty-minishell-build
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json benchmark-run --task-id repo-analysis-minishell-layout --model gemma:latest
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json benchmark-history --limit 10
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json benchmark-compare --task-id repo-analysis-minishell-layout --model gemma:latest --model deepseek-r1:8b
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase benchmark-pack"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-pack --task-id execution-honesty-minishell-build"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-run --task-id repo-analysis-minishell-layout --model gemma:latest"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-history --limit 10"
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-compare --task-id repo-analysis-minishell-layout --model gemma:latest --model deepseek-r1:8b"
 ```
 
 ## Retrieval Bundle
@@ -274,8 +289,8 @@ The `answer` command does not call an LLM yet. Instead it prepares:
 
 The `ask` command now connects the grounded answer payload to a local Ollama model.
 
-- default model: `llama3:latest`
-- transport: local `http://127.0.0.1:11435/api/chat`
+- default model: controlled by `PERSONAL_AI_DEFAULT_MODEL`
+- transport: controlled by `OLLAMA_BASE_URL`
 - dependency model: Python standard library only
 
 ## Safe Note Write Pipeline
@@ -337,7 +352,7 @@ The training pipeline now supports a dedicated Ukrainian dataset source alongsid
 Example:
 
 ```bash
-python -m personal_ai --vault "H:\KnowledgeBase\KnowledgeBase" --format json training-bundle --source ukrainian --model-family mistral
+cmd /c "set PYTHONPATH=src&& python -m cli_app.entry --vault H:\KnowledgeBase\KnowledgeBase --format json training-bundle --source ukrainian --model-family mistral"
 ```
 
 For local before/after evaluation of a base model versus a trained adapter, use:

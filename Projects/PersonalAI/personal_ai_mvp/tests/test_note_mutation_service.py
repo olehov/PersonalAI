@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from personal_ai.application.knowledge_service import KnowledgeService
-from personal_ai.application.note_mutation_service import NoteMutationService
-from personal_ai.application.note_policy import NotePolicy
+from application.knowledge.knowledge_service import KnowledgeService
+from application.notes.mutation_service import NoteMutationService
+from application.notes.policy import NotePolicy
 
 
 class NoteMutationServiceTests(unittest.TestCase):

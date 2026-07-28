@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
-from personal_ai.application.answer_service import AnswerService
-from personal_ai.application.knowledge_service import KnowledgeService
-from personal_ai.application.maintenance_service import KnowledgeMaintenanceService
-from personal_ai.application.note_draft_service import NoteDraftService
-from personal_ai.application.note_mutation_service import NoteMutationService
-from personal_ai.application.note_policy import NotePolicy
-from personal_ai.application.retrieval_service import RetrievalService
-from personal_ai.domain.models import PromptMessage
+from application.knowledge.answer_service import AnswerService
+from application.knowledge.knowledge_service import KnowledgeService
+from application.notes.draft_service import NoteDraftService
+from application.notes.maintenance_service import KnowledgeMaintenanceService
+from application.notes.mutation_service import NoteMutationService
+from application.notes.policy import NotePolicy
+from application.knowledge.retrieval_service import RetrievalService
+from domain.models import PromptMessage
 
 
 class FakeOllamaClient:

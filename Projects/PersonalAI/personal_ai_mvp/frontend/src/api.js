@@ -13,7 +13,12 @@ async function requestJson(path, options = {}) {
     : { error: await response.text() };
 
   if (!response.ok) {
-    throw new Error(payload.error ?? `Request failed with status ${response.status}`);
+    const message =
+      (typeof payload.error === "string" && payload.error.trim()) ||
+      (typeof payload.message === "string" && payload.message.trim()) ||
+      (typeof payload.detail === "string" && payload.detail.trim()) ||
+      `Request failed with status ${response.status}`;
+    throw new Error(message);
   }
 
   return payload;
@@ -25,6 +30,19 @@ export function reloadVault() {
 
 export function listModels() {
   return requestJson("/api/models", { method: "GET" });
+}
+
+export function autoRoute({ prompt, chatHistory = [], title = "", directory = "", targetDir = "Inbox" }) {
+  return requestJson("/api/auto-route", {
+    method: "POST",
+    body: JSON.stringify({
+      prompt,
+      chat_history: chatHistory,
+      title,
+      directory,
+      target_dir: targetDir,
+    }),
+  });
 }
 
 export function askQuestion({ question, model, scopeText, chatHistory = [], reasoningMode = "auto" }) {
@@ -125,6 +143,11 @@ export function listAskHistory(limit) {
 export function listAgentHistory(limit) {
   const params = new URLSearchParams({ limit: String(limit) });
   return requestJson(`/api/agent-history?${params.toString()}`, { method: "GET" });
+}
+
+export function listBenchmarkHistory(limit) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return requestJson(`/api/benchmark-history?${params.toString()}`, { method: "GET" });
 }
 
 export function getHistoryOverview() {

@@ -2,15 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from personal_ai.application.answer_service import AnswerService
-from personal_ai.application.knowledge_service import KnowledgeService
-from personal_ai.application.retrieval_service import RetrievalService
-from personal_ai.domain.models import AgentRuntimeArtifact, GeneratedAnswer
-from personal_ai.web_ui import DEFAULT_UI_MODEL, PersonalAIWebApp
+from application.knowledge.answer_service import AnswerService
+from application.benchmark.run_service import BenchmarkRunResult
+from application.knowledge.knowledge_service import KnowledgeService
+from application.chat.preprocessor import PromptPreprocessor
+from application.knowledge.retrieval_service import RetrievalService
+from domain.models import AgentRuntimeArtifact, GeneratedAnswer
+from web_app.app import DEFAULT_UI_MODEL, PersonalAIWebApp
 
 
 def build_app(root: Path) -> PersonalAIWebApp:
-    return PersonalAIWebApp(vault_root=root)
+    app = PersonalAIWebApp(vault_root=root)
+    app._prompt_preprocessor = PromptPreprocessor(mode="disabled")  # type: ignore[attr-defined]
+    return app
 
 
 def seed_ask_history(app: PersonalAIWebApp, root: Path) -> None:
@@ -46,5 +50,48 @@ def seed_agent_history(app: PersonalAIWebApp) -> int:
             final_output="Goal\nConstraints",
         ),
         latency_ms=42,
+    )
+    return saved.entry_id
+
+
+def seed_benchmark_history(app: PersonalAIWebApp) -> int:
+    saved = app._history_repository.save_benchmark_run_result(
+        BenchmarkRunResult(
+            pack_id="repo-aware-v1",
+            task_id="multi-turn-bsq-c-continuation",
+            category="multi_turn_continuation",
+            workflow="ask",
+            model="gpt-oss:20b",
+            status="completed",
+            scope_dirs=("Projects", "Languages/C"),
+            prompt_text="Implement BSQ in C incrementally and continue from prior steps.",
+            latency_ms=83,
+            result_payload={
+                "multi_turn": True,
+                "turn_count": 2,
+                "final_status": "completed",
+                "final_payload": {
+                    "answer_text": "Completed final BSQ slice.",
+                },
+                "turn_results": [
+                    {
+                        "turn_index": 1,
+                        "prompt": "Create the initial BSQ file tree.",
+                        "status": "completed",
+                        "result_payload": {
+                            "answer_text": "Drafted tree and parser entrypoint.",
+                        },
+                    },
+                    {
+                        "turn_index": 2,
+                        "prompt": "Continue and finish the implementation.",
+                        "status": "completed",
+                        "result_payload": {
+                            "answer_text": "Completed DP core and validation.",
+                        },
+                    },
+                ],
+            },
+        )
     )
     return saved.entry_id

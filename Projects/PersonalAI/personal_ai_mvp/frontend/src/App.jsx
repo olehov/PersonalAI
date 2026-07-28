@@ -3,11 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   analyzeDirectory,
   askQuestion,
-  autoRunRequest,
+  autoRoute,
   draftNote,
   getHistoryOverview,
   listAgentHistory,
   listAskHistory,
+  listBenchmarkHistory,
   listModels,
   reloadVault,
   runAgentRuntime,
@@ -15,18 +16,10 @@ import {
   updateAgentTaskPlan,
 } from "./api.js";
 
-const DEFAULT_MODEL = "gemma:latest";
+const STANDARD_MODEL_VALUE = "__standard__";
+const DEFAULT_MODEL = STANDARD_MODEL_VALUE;
 const CHAT_STORAGE_KEY = "personal-ai-chat-sessions";
 const HISTORY_LIMIT = 12;
-
-const workflowOptions = [
-  { value: "auto", label: "Auto", needsModel: true },
-  { value: "ask", label: "Ask", needsModel: true },
-  { value: "implementation", label: "Scope", needsModel: true },
-  { value: "agent", label: "Agent", needsModel: true },
-  { value: "analyze", label: "Analyze", needsModel: false },
-  { value: "draft", label: "Draft", needsModel: true },
-];
 
 const discussionPresetOptions = [
   { value: "heavy_synthesis", label: "Heavy Synthesis" },
@@ -39,15 +32,11 @@ const discussionPresetLabels = Object.fromEntries(
 );
 
 const composerDefaults = {
-  workflow: "auto",
   reasoningMode: "auto",
   discussionPreset: "heavy_synthesis",
   prompt: "",
   model: DEFAULT_MODEL,
   scopeText: "Projects, Languages/C",
-  directory: "Languages/C",
-  title: "",
-  targetDir: "Inbox",
 };
 
 function App() {
@@ -62,6 +51,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [historyEntries, setHistoryEntries] = useState([]);
   const [agentHistoryEntries, setAgentHistoryEntries] = useState([]);
+  const [benchmarkHistoryEntries, setBenchmarkHistoryEntries] = useState([]);
   const [historyOverview, setHistoryOverview] = useState({
     ask: 0,
     agent: 0,
@@ -71,6 +61,14 @@ function App() {
   const activeChat = useMemo(
     () => chatSessions.find((chat) => chat.id === activeChatId) ?? null,
     [activeChatId, chatSessions],
+  );
+  const activeProgressMessage = useMemo(
+    () => getLatestProgressMessage(activeChat?.messages ?? []),
+    [activeChat],
+  );
+  const activeProgressStage = useMemo(
+    () => getCurrentProgressStage(activeProgressMessage?.payload?.stages ?? []),
+    [activeProgressMessage],
   );
 
   useEffect(() => {
@@ -94,13 +92,20 @@ function App() {
   }, []);
 
   async function loadModelsAndHistory() {
-    await Promise.all([loadModels(), refreshHistory(), refreshAgentHistory(), refreshHistoryOverview()]);
+    await Promise.all([
+      loadModels(),
+      refreshHistory(),
+      refreshAgentHistory(),
+      refreshBenchmarkHistory(),
+      refreshHistoryOverview(),
+    ]);
   }
 
   async function loadModels() {
     try {
       const payload = await listModels();
-      const models = payload.models?.length ? payload.models : [payload.default_model ?? DEFAULT_MODEL];
+      const listedModels = payload.models?.length ? payload.models : [payload.default_model ?? "gemma:latest"];
+      const models = [STANDARD_MODEL_VALUE, ...listedModels.filter((item) => item !== STANDARD_MODEL_VALUE)];
       setModelOptions(models);
       setComposer((current) => ({
         ...current,
@@ -143,6 +148,18 @@ function App() {
     }
   }
 
+  async function refreshBenchmarkHistory() {
+    try {
+      const payload = await listBenchmarkHistory(HISTORY_LIMIT);
+      setBenchmarkHistoryEntries(payload.entries ?? []);
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: error.message,
+      });
+    }
+  }
+
   async function refreshHistoryOverview() {
     try {
       const payload = await getHistoryOverview();
@@ -169,15 +186,38 @@ function App() {
     setActiveChatId(chatId);
   }
 
+  function handleStarterPrompt(prompt) {
+    setComposer((current) => ({
+      ...current,
+      prompt,
+    }));
+  }
+
   function handleDeleteChat(chatId) {
-    setChatSessions((current) => current.filter((chat) => chat.id !== chatId));
+    setChatSessions((current) => {
+      const nextChats = current.filter((chat) => chat.id !== chatId);
+      if (nextChats.length > 0) {
+        if (chatId === activeChatId) {
+          setActiveChatId(nextChats[0].id);
+        }
+        return nextChats;
+      }
+      const fallbackChat = createChatSession();
+      setActiveChatId(fallbackChat.id);
+      return [fallbackChat];
+    });
   }
 
   async function handleReloadVault() {
     setBusy(true);
     try {
       await reloadVault();
-      await Promise.all([refreshHistory(), refreshAgentHistory(), refreshHistoryOverview()]);
+      await Promise.all([
+        refreshHistory(),
+        refreshAgentHistory(),
+        refreshBenchmarkHistory(),
+        refreshHistoryOverview(),
+      ]);
       setStatus({
         type: "info",
         message: "Vault index reloaded.",
@@ -198,27 +238,43 @@ function App() {
       return;
     }
 
-    const workflow = workflowOptions.find((option) => option.value === composer.workflow);
-    const userMessage = buildUserMessage(composer, workflow?.label ?? "Ask");
+    const chatId = activeChat.id;
+    const userMessage = buildUserMessage(composer);
+    const progressMessage = buildProgressMessage();
     const chatHistory = buildConversationHistory(activeChat.messages);
-    appendMessage(activeChat.id, userMessage);
+
+    appendMessages(chatId, [userMessage, progressMessage]);
     setBusy(true);
 
     try {
-      const execution = await runWorkflow(composer, chatHistory);
+      const execution = await runWorkflow({
+        composer,
+        chatHistory,
+        onProgress: (payload) => {
+          replaceMessage(chatId, progressMessage.id, (message) => ({
+            ...message,
+            meta: payload.meta ?? message.meta,
+            payload,
+          }));
+        },
+      });
+
+      removeMessage(chatId, progressMessage.id);
+
       appendMessage(
-        activeChat.id,
+        chatId,
         buildAssistantMessage({
           workflow: execution.workflow,
-          model: composer.model,
+          model: execution.result?.model ?? composer.model,
           reasoningMode: execution.reasoningMode,
           result: execution.result,
           route: execution.route ?? null,
         }),
       );
+
       setChatSessions((current) =>
         current.map((chat) =>
-          chat.id === activeChat.id
+          chat.id === chatId
             ? {
                 ...chat,
                 title: deriveChatTitle(chat.title, userMessage.text),
@@ -229,20 +285,26 @@ function App() {
       setComposer((current) => ({
         ...current,
         prompt: "",
-        title: current.workflow === "draft" ? current.title : "",
       }));
-      await refreshHistory();
-      await refreshAgentHistory();
-      await refreshHistoryOverview();
+      await Promise.all([
+        refreshHistory(),
+        refreshAgentHistory(),
+        refreshBenchmarkHistory(),
+        refreshHistoryOverview(),
+      ]);
       setStatus({
         type: "info",
-        message: `${workflow?.label ?? "Request"} completed.`,
+        message: `${execution.route?.workflow ?? execution.workflow ?? "request"} completed.`,
       });
     } catch (error) {
-      appendMessage(
-        activeChat.id,
-        buildSystemMessage(`Request failed: ${error.message}`),
-      );
+      replaceMessage(chatId, progressMessage.id, (message) => ({
+        ...message,
+        kind: "system",
+        label: "System",
+        text: `Request failed: ${error.message}`,
+        payload: null,
+        meta: formatTimestamp(new Date().toISOString()),
+      }));
       setStatus({
         type: "error",
         message: error.message,
@@ -252,98 +314,203 @@ function App() {
     }
   }
 
-  async function runWorkflow(currentComposer, chatHistory) {
-    if (currentComposer.workflow === "auto") {
-      const payload = await autoRunRequest({
-        prompt: currentComposer.prompt,
-        model: currentComposer.model,
-        scopeText: currentComposer.scopeText,
-        chatHistory,
-        reasoningMode: currentComposer.reasoningMode,
-        discussionPreset: currentComposer.discussionPreset,
-        title: currentComposer.title,
-        directory: currentComposer.directory,
-        targetDir: currentComposer.targetDir,
-      });
-      return {
-        workflow: payload.route?.workflow ?? "ask",
-        reasoningMode: payload.reasoning_mode ?? payload.route?.reasoning_mode ?? "standard",
-        result: payload.result,
-        route: payload.route ?? null,
-      };
-    }
-
-    if (currentComposer.workflow === "ask") {
-      const payload = await askQuestion({
-        question: currentComposer.prompt,
-        model: currentComposer.model,
-        scopeText: currentComposer.scopeText,
-        chatHistory,
-        reasoningMode: currentComposer.reasoningMode,
-      });
-      return {
-        workflow: "ask",
-        reasoningMode: resolveManualReasoningMode(currentComposer.reasoningMode),
-        result: payload.result,
-      };
-    }
-
-    if (currentComposer.workflow === "implementation") {
-      const payload = await scopeImplementation({
-        requestText: currentComposer.prompt,
-        model: currentComposer.model,
-        scopeText: currentComposer.scopeText,
-        chatHistory,
-        reasoningMode: currentComposer.reasoningMode,
-      });
-      return {
-        workflow: "implementation",
-        reasoningMode: resolveManualReasoningMode(currentComposer.reasoningMode),
-        result: payload.result,
-      };
-    }
-
-    if (currentComposer.workflow === "agent") {
-      const payload = await runAgentRuntime({
-        requestText: currentComposer.prompt,
-        model: currentComposer.model,
-        scopeText: currentComposer.scopeText,
-        chatHistory,
-        reasoningMode: currentComposer.reasoningMode,
-        discussionPreset: currentComposer.discussionPreset,
-      });
-      return {
-        workflow: "agent",
-        reasoningMode: resolveManualReasoningMode(currentComposer.reasoningMode),
-        result: payload.result,
-      };
-    }
-
-    if (currentComposer.workflow === "analyze") {
-      const payload = await analyzeDirectory({
-        directory: currentComposer.directory,
-      });
-      return { workflow: "analyze", reasoningMode: "standard", result: payload.result };
-    }
-
-    const payload = await draftNote({
-      title: currentComposer.title,
-      instruction: currentComposer.prompt,
-      model: currentComposer.model,
-      targetDir: currentComposer.targetDir,
-      scopeText: currentComposer.scopeText,
+  async function runWorkflow({ composer: currentComposer, chatHistory, onProgress }) {
+    const selectedModel = resolveApiModel(currentComposer.model);
+    const routePayload = await autoRoute({
+      prompt: currentComposer.prompt,
+      chatHistory,
+      title: "",
+      directory: "",
+      targetDir: "Inbox",
     });
-    return { workflow: "draft", reasoningMode: "standard", result: payload.result };
+
+    const route = routePayload.route ?? { workflow: "ask", reasoning_mode: "standard" };
+    const preprocess = routePayload.preprocess ?? null;
+    const reasoningMode = currentComposer.reasoningMode === "auto"
+      ? route.reasoning_mode ?? "standard"
+      : currentComposer.reasoningMode;
+
+    const stageTemplate = buildProgressStages(route.workflow);
+    onProgress({
+      status: "running",
+      summary: progressSummaryForWorkflow(route.workflow),
+      meta: `routing complete | ${route.workflow}`,
+      stages: markStagesActive(stageTemplate, 1),
+      preprocess,
+    });
+
+    const executionPayload = await executeWorkflow({
+      workflow: route.workflow,
+      composer: currentComposer,
+      selectedModel,
+      chatHistory,
+      reasoningMode,
+      route,
+      onProgress,
+      stageTemplate,
+      preprocess,
+    });
+
+    return {
+      workflow: route.workflow,
+      reasoningMode,
+      result: executionPayload.result,
+      route,
+    };
+  }
+
+  async function executeWorkflow({
+    workflow,
+    composer: currentComposer,
+    selectedModel,
+    chatHistory,
+    reasoningMode,
+    route,
+    onProgress,
+    stageTemplate,
+    preprocess,
+  }) {
+    let stageIndex = 1;
+    const advanceProgress = () => {
+      stageIndex = Math.min(stageIndex + 1, stageTemplate.length - 1);
+      onProgress({
+        status: "running",
+        summary: progressSummaryForWorkflow(workflow),
+        meta: `${workflow} | ${stageTemplate[stageIndex].title}`,
+        stages: markStagesActive(stageTemplate, stageIndex),
+        preprocess,
+      });
+    };
+
+    const ticker = window.setInterval(advanceProgress, 1100);
+
+    try {
+      if (workflow === "agent") {
+        const response = await runAgentRuntime({
+          requestText: currentComposer.prompt,
+          model: selectedModel,
+          scopeText: currentComposer.scopeText,
+          chatHistory,
+          reasoningMode,
+          discussionPreset: currentComposer.discussionPreset,
+        });
+        return finalizeWorkflowResponse({
+          response,
+          workflow,
+          onProgress,
+          stageTemplate,
+          preprocess,
+        });
+      }
+
+      if (workflow === "implementation") {
+        const response = await scopeImplementation({
+          requestText: currentComposer.prompt,
+          model: selectedModel,
+          scopeText: currentComposer.scopeText,
+          chatHistory,
+          reasoningMode,
+        });
+        return finalizeWorkflowResponse({
+          response,
+          workflow,
+          onProgress,
+          stageTemplate,
+          preprocess,
+        });
+      }
+
+      if (workflow === "draft") {
+        const response = await draftNote({
+          title: route.derived_title || deriveDraftTitle(currentComposer.prompt),
+          instruction: currentComposer.prompt,
+          model: selectedModel,
+          targetDir: "Inbox",
+          scopeText: currentComposer.scopeText,
+        });
+        return finalizeWorkflowResponse({
+          response,
+          workflow,
+          onProgress,
+          stageTemplate,
+          preprocess,
+        });
+      }
+
+      if (workflow === "analyze") {
+        const response = await analyzeDirectory({
+          directory: route.derived_directory || currentComposer.scopeText.split(",")[0]?.trim() || "Projects",
+        });
+        return finalizeWorkflowResponse({
+          response,
+          workflow,
+          onProgress,
+          stageTemplate,
+          preprocess,
+        });
+      }
+
+      const response = await askQuestion({
+        question: currentComposer.prompt,
+        model: selectedModel,
+        scopeText: currentComposer.scopeText,
+        chatHistory,
+        reasoningMode,
+      });
+      return finalizeWorkflowResponse({
+        response,
+        workflow,
+        onProgress,
+        stageTemplate,
+        preprocess,
+      });
+    } finally {
+      window.clearInterval(ticker);
+    }
   }
 
   function appendMessage(chatId, message) {
+    appendMessages(chatId, [message]);
+  }
+
+  function appendMessages(chatId, messages) {
     setChatSessions((current) =>
       current.map((chat) =>
         chat.id === chatId
           ? {
               ...chat,
               updatedAt: new Date().toISOString(),
-              messages: [...chat.messages, message],
+              messages: [...chat.messages, ...messages],
+            }
+          : chat,
+      ),
+    );
+  }
+
+  function replaceMessage(chatId, messageId, updater) {
+    setChatSessions((current) =>
+      current.map((chat) =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              updatedAt: new Date().toISOString(),
+              messages: chat.messages.map((message) =>
+                message.id === messageId ? updater(message) : message,
+              ),
+            }
+          : chat,
+      ),
+    );
+  }
+
+  function removeMessage(chatId, messageId) {
+    setChatSessions((current) =>
+      current.map((chat) =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              updatedAt: new Date().toISOString(),
+              messages: chat.messages.filter((message) => message.id !== messageId),
             }
           : chat,
       ),
@@ -466,118 +633,156 @@ function App() {
     });
   }
 
+  function importBenchmarkHistoryEntry(entry) {
+    const result = entry.result_payload ?? {};
+    const importedChat = {
+      id: crypto.randomUUID(),
+      title: truncateText(entry.task_id, 42) || "Imported benchmark run",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messages: [
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          kind: "benchmark-history-import",
+          label: "Imported Benchmark Task",
+          text: entry.prompt_text,
+          meta: `${entry.model} | ${entry.workflow} | ${entry.created_at}`,
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          kind: "benchmark",
+          label: "Imported Benchmark Run",
+          meta: `status ${entry.status} | latency ${entry.latency_ms ?? "n/a"} ms`,
+          payload: normalizeResult("benchmark", {
+            ...result,
+            task_id: entry.task_id,
+            pack_id: entry.pack_id,
+            category: entry.category,
+            workflow: entry.workflow,
+            model: entry.model,
+            status: entry.status,
+            prompt_text: entry.prompt_text,
+            latency_ms: entry.latency_ms,
+          }),
+        },
+      ],
+    };
+
+    setChatSessions((current) => [importedChat, ...current]);
+    setActiveChatId(importedChat.id);
+    setStatus({
+      type: "info",
+      message: "Benchmark history entry imported as a chat.",
+    });
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-top">
+        <div className="sidebar-brand">
           <div>
             <p className="sidebar-kicker">PersonalAI</p>
             <h1>Chats</h1>
           </div>
-          <button className="primary-button" onClick={handleNewChat} type="button">
-            New Chat
+          <button className="primary-button sidebar-new-chat" onClick={handleNewChat} type="button">
+            New chat
           </button>
         </div>
 
-        <div className="chat-list">
-          {chatSessions.map((chat) => (
-            <button
-              className={`chat-item${chat.id === activeChatId ? " active" : ""}`}
-              key={chat.id}
-              onClick={() => handleSelectChat(chat.id)}
-              type="button"
-            >
-              <span className="chat-item-title">{chat.title}</span>
-              <span className="chat-item-meta">
-                {formatTimestamp(chat.updatedAt)} | {chat.messages.length} msgs
-              </span>
-              <span
-                aria-label={`Delete ${chat.title}`}
-                className="chat-item-delete"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleDeleteChat(chat.id);
-                }}
-                role="button"
-                tabIndex={0}
+        <div className="sidebar-group">
+          <p className="sidebar-group-label">Recent Chats</p>
+          <div className="chat-list">
+            {chatSessions.map((chat) => (
+              <button
+                className={`chat-item${chat.id === activeChatId ? " active" : ""}`}
+                key={chat.id}
+                onClick={() => handleSelectChat(chat.id)}
+                type="button"
               >
-                ×
-              </span>
-            </button>
-          ))}
+                <span className="chat-item-title">{chat.title}</span>
+                <span className="chat-item-meta">
+                  {formatTimestamp(chat.updatedAt)} - {chat.messages.length} msgs
+                </span>
+                <span
+                  aria-label={`Delete ${chat.title}`}
+                  className="chat-item-delete"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleDeleteChat(chat.id);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                >
+                  x
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="sidebar-section">
+        <div className="sidebar-group sidebar-history">
           <div className="sidebar-section-header">
-            <h2>Saved Runs</h2>
+            <p className="sidebar-group-label">Saved Runs</p>
             <button
               className="text-button"
-              onClick={() => Promise.all([refreshHistory(), refreshAgentHistory()])}
+              onClick={() => Promise.all([refreshHistory(), refreshAgentHistory(), refreshBenchmarkHistory()])}
               type="button"
             >
               Refresh
             </button>
           </div>
-          <div className="history-stack">
-            <div className="history-group">
-              <p className="history-group-title">Ask / Scope ({historyOverview.ask})</p>
-              {historyEntries.length === 0 ? (
-                <p className="muted-copy">No saved ask runs yet.</p>
-              ) : (
-                historyEntries.map((entry) => (
-                  <div className="history-card" key={`history-${entry.entry_id}`}>
-                    <p className="history-card-title">{truncateText(entry.question, 58)}</p>
-                    <p className="history-card-meta">
-                      {entry.model} | {entry.task_mode}
-                    </p>
-                    <button
-                      className="ghost-button compact"
-                      onClick={() => importHistoryEntry(entry)}
-                      type="button"
-                    >
-                      Open as Chat
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
 
-            <div className="history-group">
-              <p className="history-group-title">Agent Runs ({historyOverview.agent})</p>
-              {agentHistoryEntries.length === 0 ? (
-                <p className="muted-copy">No saved agent runs yet.</p>
-              ) : (
-                agentHistoryEntries.map((entry) => (
-                  <div className="history-card" key={`agent-${entry.entry_id}`}>
-                    <p className="history-card-title">
-                      {truncateText(entry.normalized_goal || entry.request_text, 58)}
-                    </p>
-                    <p className="history-card-meta">
-                      {entry.model} | {entry.artifact_payload?.discussion_preset ?? "custom"} | {entry.status}
-                    </p>
-                    <button
-                      className="ghost-button compact"
-                      onClick={() => importAgentHistoryEntry(entry)}
-                      type="button"
-                    >
-                      Open as Chat
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+          <HistoryGroup
+            title={`Ask / Scope (${historyOverview.ask})`}
+            entries={historyEntries}
+            emptyLabel="No saved ask runs yet."
+            renderTitle={(entry) => truncateText(entry.question, 54)}
+            renderMeta={(entry) => `${entry.model} - ${entry.task_mode}`}
+            onOpen={importHistoryEntry}
+          />
+
+          <HistoryGroup
+            title={`Agent Runs (${historyOverview.agent})`}
+            entries={agentHistoryEntries}
+            emptyLabel="No saved agent runs yet."
+            renderTitle={(entry) => truncateText(entry.normalized_goal || entry.request_text, 54)}
+            renderMeta={(entry) => `${entry.model} - ${entry.artifact_payload?.discussion_preset ?? "custom"} - ${entry.status}`}
+            onOpen={importAgentHistoryEntry}
+          />
+
+          <HistoryGroup
+            title={`Benchmark Runs (${historyOverview.benchmark})`}
+            entries={benchmarkHistoryEntries}
+            emptyLabel="No saved benchmark runs yet."
+            renderTitle={(entry) => truncateText(entry.task_id, 54)}
+            renderMeta={(entry) => `${entry.model} - ${entry.workflow} - ${entry.status} - turns ${countBenchmarkTurns(entry.result_payload)}`}
+            onOpen={importBenchmarkHistoryEntry}
+          />
         </div>
       </aside>
 
       <main className="chat-layout">
         <header className="topbar">
-          <div>
-            <p className="sidebar-kicker">Local-First Developer Assistant</p>
-            <h2>{activeChat?.title ?? "Chat"}</h2>
+          <div className="topbar-copy">
+            <p className="sidebar-kicker">Local-first developer assistant</p>
+            <h2>{activeChat?.title ?? "New Chat"}</h2>
+            <p className="topbar-subtitle">
+              Coding-first chat with grounded context, planner-aware execution, and saved runs.
+            </p>
           </div>
           <div className="topbar-actions">
-            <span className="model-pill">{composer.model}</span>
+            {busy && activeProgressStage ? (
+              <div className={`live-pill ${busy ? "running" : "idle"}`}>
+                <span className="live-pill-dot" />
+                <div className="live-pill-copy">
+                  <strong>{busy ? "Working" : "Last run"}</strong>
+                  <span>{activeProgressStage.title}</span>
+                </div>
+              </div>
+            ) : null}
+            <span className="model-pill">{formatSelectedModelLabel(composer.model)}</span>
             <button className="ghost-button" onClick={handleReloadVault} disabled={busy} type="button">
               Reload Vault
             </button>
@@ -597,110 +802,87 @@ function App() {
               />
             ))
           ) : (
-            <EmptyState />
+            <EmptyState onStarterPick={handleStarterPrompt} />
           )}
         </section>
 
         <form className="composer" onSubmit={handleSubmit}>
+          {busy && activeProgressStage ? (
+            <div className={`composer-runtime ${busy ? "running" : "idle"}`}>
+              <span className="composer-runtime-label">Current stage</span>
+              <strong>{activeProgressStage.title}</strong>
+              <span>{activeProgressStage.detail}</span>
+            </div>
+          ) : null}
           <div className="composer-toolbar">
             <Field
-              label="Mode"
-              value={composer.workflow}
-              onChange={(value) => setComposer((current) => ({ ...current, workflow: value }))}
-              options={workflowOptions.map((option) => option.value)}
-              labels={Object.fromEntries(workflowOptions.map((option) => [option.value, option.label]))}
+              label="Reasoning"
+              value={composer.reasoningMode}
+              onChange={(value) => setComposer((current) => ({ ...current, reasoningMode: value }))}
+              options={["auto", "standard", "high"]}
+              labels={{ auto: "Auto", standard: "Standard", high: "High" }}
             />
-            {workflowOptions.find((option) => option.value === composer.workflow)?.needsModel ? (
-              <Field
-                label="Model"
-                value={composer.model}
-                onChange={(value) => setComposer((current) => ({ ...current, model: value }))}
-                options={modelOptions}
-              />
-            ) : null}
-            {composer.workflow !== "analyze" && composer.workflow !== "draft" ? (
-              <Field
-                label="Reasoning"
-                value={composer.reasoningMode}
-                onChange={(value) => setComposer((current) => ({ ...current, reasoningMode: value }))}
-                options={["auto", "standard", "high"]}
-                labels={{ auto: "Auto", standard: "Standard", high: "High" }}
-              />
-            ) : null}
-            {(composer.workflow === "auto" || composer.workflow === "agent") ? (
-              <Field
-                label="Role Preset"
-                value={composer.discussionPreset}
-                onChange={(value) => setComposer((current) => ({ ...current, discussionPreset: value }))}
-                options={discussionPresetOptions.map((option) => option.value)}
-                labels={discussionPresetLabels}
-              />
-            ) : null}
-            {composer.workflow === "analyze" ? (
-              <Field
-                label="Directory"
-                value={composer.directory}
-                onChange={(value) => setComposer((current) => ({ ...current, directory: value }))}
-                placeholder="Languages/C"
-              />
-            ) : null}
-            {composer.workflow === "draft" ? (
-              <>
-                <Field
-                  label="Title"
-                  value={composer.title}
-                  onChange={(value) => setComposer((current) => ({ ...current, title: value }))}
-                  placeholder="Shell Parser Architecture"
-                />
-                <Field
-                  label="Target"
-                  value={composer.targetDir}
-                  onChange={(value) => setComposer((current) => ({ ...current, targetDir: value }))}
-                  placeholder="Inbox"
-                />
-              </>
-            ) : null}
+            <Field
+              label="Collab"
+              value={composer.discussionPreset}
+              onChange={(value) => setComposer((current) => ({ ...current, discussionPreset: value }))}
+              options={discussionPresetOptions.map((option) => option.value)}
+              labels={discussionPresetLabels}
+            />
           </div>
 
-          {composer.workflow !== "analyze" ? (
+          <div className="composer-scope-row">
             <input
               className="scope-input"
               value={composer.scopeText}
               onChange={(event) =>
                 setComposer((current) => ({ ...current, scopeText: event.target.value }))
               }
-              placeholder="Scope dirs: Projects, Languages/C"
+              placeholder="Projects, Languages/C"
             />
-          ) : null}
+          </div>
 
-          <textarea
-            value={composer.prompt}
-            onChange={(event) =>
-              setComposer((current) => ({ ...current, prompt: event.target.value }))
-            }
-            placeholder={placeholderForWorkflow(composer.workflow)}
-          />
+          <div className="composer-input-shell">
+            <textarea
+              value={composer.prompt}
+              onChange={(event) =>
+                setComposer((current) => ({ ...current, prompt: event.target.value }))
+              }
+              placeholder={composerPlaceholder()}
+            />
+            <button className="send-button" disabled={busy || !composer.prompt.trim()} type="submit">
+              {busy ? "..." : "^"}
+            </button>
+          </div>
 
           <div className="composer-footer">
             <p className="muted-copy">
-              {composer.workflow === "ask"
-                ? "Grounded coding answer against your vault and local model."
-                : composer.workflow === "auto"
-                  ? "Let the backend choose the best workflow, while keeping manual modes available as override."
-                  : composer.workflow === "implementation"
-                  ? "Break a big task into concrete implementation slices."
-                  : composer.workflow === "agent"
-                    ? "Run a planning-oriented agent runtime with grounded steps and explicit limits."
-                  : composer.workflow === "analyze"
-                    ? "Inspect a directory and surface gaps in the graph."
-                    : "Draft a safe note proposal without mutating the vault."}
+              Auto-routing picks the workflow first, then the UI shows the live execution stage while the backend works.
             </p>
-            <button className="primary-button" disabled={busy || !composer.prompt.trim()} type="submit">
-              {busy ? "Working..." : "Send"}
-            </button>
           </div>
         </form>
       </main>
+    </div>
+  );
+}
+
+function HistoryGroup({ title, entries, emptyLabel, renderTitle, renderMeta, onOpen }) {
+  return (
+    <div className="history-group">
+      <p className="history-group-title">{title}</p>
+      {entries.length === 0 ? (
+        <p className="muted-copy">{emptyLabel}</p>
+      ) : (
+        entries.map((entry) => (
+          <div className="history-card" key={`${title}-${entry.entry_id}`}>
+            <p className="history-card-title">{renderTitle(entry)}</p>
+            <p className="history-card-meta">{renderMeta(entry)}</p>
+            <button className="ghost-button compact" onClick={() => onOpen(entry)} type="button">
+              Open
+            </button>
+          </div>
+        ))
+      )}
     </div>
   );
 }
@@ -730,13 +912,40 @@ function MessageBubble({ chatId, message, onTaskPlanUpdate }) {
           onTaskPlanUpdate={onTaskPlanUpdate}
         />
       ) : (
-        <pre>{message.text}</pre>
+        <RichAnswerText text={message.text} />
       )}
     </article>
   );
 }
 
 function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }) {
+  if (kind === "progress") {
+    return (
+      <div className="progress-panel">
+        <div className="progress-panel-header">
+          <p className="progress-summary">{payload.summary}</p>
+          {payload.meta ? <span className="progress-panel-meta">{payload.meta}</span> : null}
+        </div>
+        <div className="progress-stage-list compact">
+          {(payload.stages ?? []).map((stage, index) => (
+            <article className={`progress-stage ${stage.status}`} key={`progress-${index}`}>
+              <div className="progress-stage-icon">
+                {stage.status === "completed" ? "done" : stage.status === "failed" ? "fail" : stage.status === "running" ? "now" : "next"}
+              </div>
+              <div className="progress-stage-copy">
+                <p className="progress-stage-title">{stage.title}</p>
+                <p className="progress-stage-detail">{stage.detail}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+        {payload.preprocess ? (
+          <ProgressPreprocessCard preprocess={payload.preprocess} />
+        ) : null}
+      </div>
+    );
+  }
+
   if (kind === "analyze") {
     return (
       <div className="structured-stack">
@@ -763,6 +972,9 @@ function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }
     return (
       <div className="structured-stack">
         <KeyValueGrid items={payload.summaryItems} />
+        {payload.runtimeFlow?.length ? (
+          <RuntimeFlowSection items={payload.runtimeFlow} />
+        ) : null}
         {payload.taskPlan ? (
           <section className="agent-section">
             <h3>Task Plan</h3>
@@ -770,7 +982,7 @@ function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }
             <TaskPlanList
               chatId={chatId}
               messageId={messageId}
-              items={payload.taskPlan.entries ?? []}
+              items={payload.taskPlan.entries}
               onTaskPlanUpdate={onTaskPlanUpdate}
             />
             {payload.taskPlan.validationChecks?.length ? (
@@ -787,11 +999,15 @@ function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }
             title="Discussion Trace"
             items={[
               {
-                label: `Preset | ${discussionPresetLabels[payload.discussionTrace.preset] ?? payload.discussionTrace.preset ?? "custom"}`,
+                label: `Preset - ${discussionPresetLabels[payload.discussionTrace.preset] ?? payload.discussionTrace.preset ?? "custom"}`,
                 body: payload.discussionTrace.plannerDraft || "none",
               },
               { label: "Critic Feedback", body: payload.discussionTrace.criticFeedback || "none" },
               { label: "Synthesis Output", body: payload.discussionTrace.synthesisOutput || "none" },
+              {
+                label: `Approver - ${payload.discussionTrace.approvalStatus || "unknown"} - revisions ${payload.discussionTrace.plannerRevisions ?? 0} - rollbacks ${payload.discussionTrace.plannerRollbacks ?? 0}`,
+                body: payload.discussionTrace.approverFeedback || "none",
+              },
               { label: "Fallback Used", body: payload.discussionTrace.fallbackUsed || "none" },
             ]}
             renderMeta={(item) => item.label}
@@ -802,7 +1018,7 @@ function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }
           <DetailCardList
             title="Timeline"
             items={payload.steps}
-            renderMeta={(item) => `${item.kind} | ${item.title}`}
+            renderMeta={(item) => `${item.kind} - ${item.title}`}
             renderBody={(item) => item.observation}
           />
         ) : null}
@@ -810,7 +1026,7 @@ function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }
           <DetailCardList
             title="Recommended Actions"
             items={payload.actions}
-            renderMeta={(item) => `${item.action_type} | ${item.title}`}
+            renderMeta={(item) => `${item.action_type} - ${item.title}`}
             renderBody={(item) => `${item.target}\n${item.instruction}`}
           />
         ) : null}
@@ -818,7 +1034,7 @@ function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }
           <DetailCardList
             title="Executed Actions"
             items={payload.executions}
-            renderMeta={(item) => `${item.action_type} | ${item.status}`}
+            renderMeta={(item) => `${item.action_type} - ${item.status}`}
             renderBody={(item) => `${item.target}\n${item.output_text}`}
           />
         ) : null}
@@ -827,24 +1043,95 @@ function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }
     );
   }
 
+  if (kind === "benchmark") {
+    return (
+      <div className="structured-stack">
+        <KeyValueGrid items={payload.summaryItems} />
+        {payload.turnResults?.length ? (
+          <DetailCardList
+            title="Turn Results"
+            items={payload.turnResults}
+            renderMeta={(item) => `turn ${item.turnIndex} - ${item.status}`}
+            renderBody={(item) => `${item.prompt}\n\n${item.preview}`}
+          />
+        ) : null}
+        {payload.finalPreview ? (
+          <section className="agent-section">
+            <h3>Final Preview</h3>
+            <pre>{payload.finalPreview}</pre>
+          </section>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="structured-stack">
-      <pre>{payload.answer}</pre>
+      <RichAnswerText text={payload.answer} />
       {payload.citations?.length ? <InfoList title="Citations" items={payload.citations} /> : null}
       {payload.context?.length ? <InfoList title="Context" items={payload.context} /> : null}
     </div>
   );
 }
 
-function EmptyState() {
+function RichAnswerText({ text }) {
+  const blocks = splitTextBlocks(text ?? "");
+  return (
+    <div className="rich-text">
+      {blocks.map((block, index) => {
+        if (block.kind === "code") {
+          return (
+            <pre className="rich-code" key={`block-${index}`}>
+              {block.content}
+            </pre>
+          );
+        }
+        if (block.kind === "list") {
+          return (
+            <ul className="rich-list" key={`block-${index}`}>
+              {block.items.map((item, itemIndex) => (
+                <li key={`item-${itemIndex}`}>{item}</li>
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <p className="rich-paragraph" key={`block-${index}`}>
+            {block.content}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function EmptyState({ onStarterPick }) {
+  const starterPrompts = [
+    "Explain how to design a minimal command parser for minishell in C.",
+    "Review my C notes and suggest the next missing node to add to the graph.",
+    "Plan the next safe implementation slice for PersonalAI chat memory.",
+  ];
+
   return (
     <div className="empty-state">
-      <p className="sidebar-kicker">Minimal Chat UI</p>
-      <h3>Start with one focused request.</h3>
+      <p className="sidebar-kicker">Coding-first workspace</p>
+      <h3>Start a new request.</h3>
       <p>
-        Ask a coding question, analyze a directory, draft a note, or scope a larger implementation
-        task. Each chat stays separate, and you can switch between them from the sidebar.
+        Ask a focused coding question, continue an implementation slice, or let the agent plan the next
+        safe step. Progress appears turn by turn while the backend works.
       </p>
+      <div className="starter-list">
+        {starterPrompts.map((prompt) => (
+          <button
+            className="starter-chip"
+            key={prompt}
+            onClick={() => onStarterPick(prompt)}
+            type="button"
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -860,6 +1147,82 @@ function InfoList({ title, items }) {
       </ul>
     </section>
   );
+}
+
+function ProgressPreprocessCard({ preprocess }) {
+  const rows = buildPreprocessRows(preprocess);
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="progress-preprocess-card">
+      <div className="progress-preprocess-header">
+        <p className="sidebar-group-label">Generated Prompt</p>
+        <span className="progress-panel-meta">{preprocess.mode ?? "disabled"}</span>
+      </div>
+      <div className="progress-preprocess-grid">
+        {rows.map((row) => (
+          <article className="progress-preprocess-row" key={row.label}>
+            <p className="progress-preprocess-label">{row.label}</p>
+            <pre>{row.value}</pre>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function splitTextBlocks(text) {
+  const normalized = String(text ?? "").replace(/\r\n/g, "\n").trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const blocks = [];
+  const codeFencePattern = /```[^\n]*\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codeFencePattern.exec(normalized)) !== null) {
+    const before = normalized.slice(lastIndex, match.index).trim();
+    if (before) {
+      blocks.push(...splitPlainBlocks(before));
+    }
+    blocks.push({
+      kind: "code",
+      content: match[1].trim(),
+    });
+    lastIndex = match.index + match[0].length;
+  }
+
+  const tail = normalized.slice(lastIndex).trim();
+  if (tail) {
+    blocks.push(...splitPlainBlocks(tail));
+  }
+  return blocks;
+}
+
+function splitPlainBlocks(text) {
+  const chunks = text
+    .split(/\n\s*\n/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+  return chunks.map((chunk) => {
+    const lines = chunk.split("\n").map((line) => line.trim()).filter(Boolean);
+    const isList = lines.length > 1 && lines.every((line) => /^([-*]|\d+\.)\s+/.test(line));
+    if (isList) {
+      return {
+        kind: "list",
+        items: lines.map((line) => line.replace(/^([-*]|\d+\.)\s+/, "").trim()),
+      };
+    }
+    return {
+      kind: "paragraph",
+      content: lines.join(" "),
+    };
+  });
 }
 
 function KeyValueGrid({ items }) {
@@ -894,6 +1257,29 @@ function DetailCardList({ title, items, renderMeta, renderBody }) {
   );
 }
 
+function RuntimeFlowSection({ items }) {
+  return (
+    <section className="agent-section">
+      <h3>Runtime Flow</h3>
+      <div className="runtime-flow">
+        {items.map((item, index) => (
+          <article
+            className={`runtime-step status-${item.status ?? "completed"} emphasis-${item.emphasis ?? "neutral"}`}
+            key={`runtime-step-${index}`}
+          >
+            <p className="runtime-step-index">{index + 1}</p>
+            <div className="runtime-step-copy">
+              <p className="runtime-step-title">{item.title}</p>
+              <p className="runtime-step-meta">{item.meta}</p>
+              {item.detail ? <pre>{item.detail}</pre> : null}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function TaskPlanList({ chatId, messageId, items, onTaskPlanUpdate }) {
   return (
     <section className="agent-section">
@@ -903,7 +1289,7 @@ function TaskPlanList({ chatId, messageId, items, onTaskPlanUpdate }) {
           <article className={`detail-card task-plan-card status-${item.status}`} key={`plan-${index}`}>
             <p className="detail-card-index">{item.step_index}</p>
             <div className="detail-card-copy">
-              <p className="detail-card-meta">{`${item.status} | ${item.source_section}`}</p>
+              <p className="detail-card-meta">{`${item.status} - ${item.source_section}`}</p>
               <pre>{`${item.title}\n${item.details}`}</pre>
               <div className="task-plan-actions">
                 {item.status !== "completed" ? (
@@ -912,7 +1298,7 @@ function TaskPlanList({ chatId, messageId, items, onTaskPlanUpdate }) {
                     onClick={() => onTaskPlanUpdate(chatId, messageId, index, "complete")}
                     type="button"
                   >
-                    Mark Done
+                    Mark done
                   </button>
                 ) : null}
                 {item.status !== "next" ? (
@@ -921,7 +1307,7 @@ function TaskPlanList({ chatId, messageId, items, onTaskPlanUpdate }) {
                     onClick={() => onTaskPlanUpdate(chatId, messageId, index, "make-current")}
                     type="button"
                   >
-                    Make Current
+                    Make current
                   </button>
                 ) : null}
                 {item.status !== "pending" ? (
@@ -969,12 +1355,12 @@ function StatusBanner({ type, message }) {
   return <div className={`status-banner ${type}`}>{message}</div>;
 }
 
-function buildUserMessage(composer, workflowLabel) {
+function buildUserMessage(composer) {
   return {
     id: crypto.randomUUID(),
     role: "user",
-    kind: composer.workflow,
-    label: workflowLabel,
+    kind: "codex",
+    label: "Request",
     text: composer.prompt,
     meta: buildUserMeta(composer),
   };
@@ -984,7 +1370,7 @@ function buildAssistantMessage({ workflow, model, reasoningMode, result, route =
   const discussionPreset = result?.discussion_preset;
   const metaParts = [];
   if (model) {
-    metaParts.push(`model ${model}`);
+    metaParts.push(`model ${formatSelectedModelLabel(model)}`);
   }
   if (route) {
     metaParts.push(`auto->${route.workflow}`);
@@ -1003,19 +1389,23 @@ function buildAssistantMessage({ workflow, model, reasoningMode, result, route =
     label: "Assistant",
     reasoningMode,
     routeWorkflow: route?.workflow ?? null,
-    meta: metaParts.join(" | "),
+    meta: metaParts.join(" - "),
     payload: normalizeResult(workflow, result),
   };
 }
 
-function buildSystemMessage(text) {
+function buildProgressMessage() {
   return {
     id: crypto.randomUUID(),
-    role: "system",
-    kind: "system",
-    label: "System",
-    text,
-    meta: formatTimestamp(new Date().toISOString()),
+    role: "assistant",
+    kind: "progress",
+    label: "Working",
+    meta: "routing...",
+    payload: {
+      status: "running",
+      summary: "Preparing the request flow.",
+      stages: markStagesActive(buildProgressStages("ask"), 0),
+    },
   };
 }
 
@@ -1031,6 +1421,76 @@ function buildReasoningBadge(message) {
     return { label: "High", className: "high" };
   }
   return { label: "Standard", className: "standard" };
+}
+
+function buildRuntimeFlow(result) {
+  if (!result || !result.discussion_trace) {
+    return [];
+  }
+
+  const discussionTrace = result.discussion_trace;
+  const flow = [
+    {
+      title: "Planner Draft",
+      meta: result.model ?? "planner",
+      detail: truncateText(discussionTrace.planner_draft ?? "", 220),
+      status: "completed",
+      emphasis: "planner",
+    },
+  ];
+
+  if (discussionTrace.critic_feedback) {
+    flow.push({
+      title: "Discussion Critique",
+      meta: result.critic_model ?? "critic",
+      detail: truncateText(discussionTrace.critic_feedback, 220),
+      status: "completed",
+      emphasis: "discussion",
+    });
+  }
+
+  if (discussionTrace.synthesis_output) {
+    flow.push({
+      title: "Planner Revision",
+      meta: result.synthesis_model ?? result.model ?? "planner",
+      detail: truncateText(discussionTrace.synthesis_output, 220),
+      status: "completed",
+      emphasis: "planner",
+    });
+  }
+
+  if (discussionTrace.approval_status || discussionTrace.approver_feedback) {
+    flow.push({
+      title: "Approver Review",
+      meta: `${result.approver_model ?? result.synthesis_model ?? result.model ?? "approver"} - ${discussionTrace.approval_status ?? "unknown"}`,
+      detail: truncateText(discussionTrace.approver_feedback ?? "", 220),
+      status: discussionTrace.approval_status === "approved" ? "completed" : "rollback",
+      emphasis: "approver",
+    });
+  }
+
+  if ((discussionTrace.planner_rollbacks ?? 0) > 0) {
+    flow.push({
+      title: "Rollback To Planner",
+      meta: `${discussionTrace.planner_rollbacks} rollback(s)`,
+      detail: `Planner revisions: ${discussionTrace.plannerRevisions ?? discussionTrace.planner_revisions ?? 0}`,
+      status: "rollback",
+      emphasis: "rollback",
+    });
+  }
+
+  if ((result.action_executions ?? []).length > 0) {
+    const executedCount = (result.action_executions ?? []).filter((item) => item.status === "executed").length;
+    flow.push({
+      title: "Executor Pass",
+      meta: `${result.executor_model ?? result.model ?? "executor"} - executed ${executedCount}/${(result.action_executions ?? []).length}`,
+      detail: truncateText(result.final_output ?? "", 220),
+      status: "completed",
+      emphasis: "executor",
+    });
+  }
+
+  return flow;
 }
 
 function normalizeResult(workflow, result) {
@@ -1085,10 +1545,40 @@ function normalizeResult(workflow, result) {
             plannerDraft: result.discussion_trace.planner_draft ?? "",
             criticFeedback: result.discussion_trace.critic_feedback ?? "",
             synthesisOutput: result.discussion_trace.synthesis_output ?? "",
+            approverFeedback: result.discussion_trace.approver_feedback ?? "",
+            approvalStatus: result.discussion_trace.approval_status ?? "",
+            plannerRevisions: result.discussion_trace.planner_revisions ?? 0,
+            plannerRollbacks: result.discussion_trace.planner_rollbacks ?? 0,
             fallbackUsed: result.discussion_trace.fallback_used ?? "",
           }
         : null,
       citations: result.citations ?? [],
+      runtimeFlow: buildRuntimeFlow(result),
+    };
+  }
+
+  if (workflow === "benchmark") {
+    const turnResults = Array.isArray(result.turn_results)
+      ? result.turn_results.map((turn) => ({
+          turnIndex: turn.turn_index ?? "?",
+          status: turn.status ?? "unknown",
+          prompt: turn.prompt ?? "",
+          preview: buildBenchmarkPreview(turn.result_payload ?? {}),
+        }))
+      : [];
+    return {
+      summaryItems: [
+        { label: "Pack", value: result.pack_id ?? "" },
+        { label: "Task", value: result.task_id ?? "" },
+        { label: "Category", value: result.category ?? "" },
+        { label: "Workflow", value: result.workflow ?? "" },
+        { label: "Model", value: result.model ?? "" },
+        { label: "Status", value: result.status ?? result.final_status ?? "" },
+        { label: "Latency", value: result.latency_ms != null ? `${result.latency_ms} ms` : "n/a" },
+        { label: "Turns", value: String(turnResults.length) },
+      ],
+      turnResults,
+      finalPreview: buildBenchmarkPreview(result.final_payload ?? result),
     };
   }
 
@@ -1109,24 +1599,36 @@ function formatRetrievalItems(items) {
   );
 }
 
-function buildUserMeta(composer) {
-  if (composer.workflow === "analyze") {
-    return `directory ${composer.directory}`;
-  }
-  if (composer.workflow === "draft") {
-    return `${composer.model} | ${composer.targetDir}`;
-  }
-  return `${composer.model} | ${composer.reasoningMode} | ${composer.scopeText}`;
+function countBenchmarkTurns(resultPayload) {
+  return Array.isArray(resultPayload?.turn_results) ? resultPayload.turn_results.length : 0;
 }
 
-function resolveManualReasoningMode(reasoningMode) {
-  if (reasoningMode === "high") {
-    return "high";
+function buildBenchmarkPreview(resultPayload) {
+  if (!resultPayload || typeof resultPayload !== "object") {
+    return "";
   }
-  if (reasoningMode === "standard") {
-    return "standard";
+  if (typeof resultPayload.answer_text === "string" && resultPayload.answer_text.trim()) {
+    return resultPayload.answer_text;
   }
-  return "high";
+  if (typeof resultPayload.final_output === "string" && resultPayload.final_output.trim()) {
+    return resultPayload.final_output;
+  }
+  if (typeof resultPayload.status === "string" && resultPayload.status.trim()) {
+    return `Status: ${resultPayload.status}`;
+  }
+  return JSON.stringify(resultPayload, null, 2);
+}
+
+function buildUserMeta(composer) {
+  return `${formatSelectedModelLabel(composer.model)} - ${composer.reasoningMode} - ${composer.scopeText}`;
+}
+
+function resolveApiModel(selectedModel) {
+  return selectedModel === STANDARD_MODEL_VALUE ? undefined : selectedModel;
+}
+
+function formatSelectedModelLabel(selectedModel) {
+  return selectedModel === STANDARD_MODEL_VALUE ? "Standard" : selectedModel;
 }
 
 function buildConversationHistory(messages) {
@@ -1136,8 +1638,74 @@ function buildConversationHistory(messages) {
     .slice(-8);
 }
 
+function buildPreprocessRows(preprocess) {
+  if (!preprocess || typeof preprocess !== "object") {
+    return [];
+  }
+
+  const rows = [];
+  const mode = typeof preprocess.mode === "string" ? preprocess.mode.trim() : "";
+  const applied = preprocess.applied === true;
+  const originalText = normalizePromptPreview(preprocess.original_text);
+  const processedText = normalizePromptPreview(preprocess.processed_text);
+  const translatorOutput = normalizePromptPreview(preprocess.translator_output);
+  const translatorError = normalizePromptPreview(preprocess.translator_error);
+  const fallbackReason = normalizePromptPreview(preprocess.fallback_reason);
+
+  if (mode) {
+    rows.push({
+      label: "Status",
+      value: applied
+        ? `${mode} applied`
+        : `${mode} ${fallbackReason || "fallback/no change"}`,
+    });
+  }
+  if (originalText) {
+    rows.push({ label: "Original", value: originalText });
+  }
+  if (processedText) {
+    rows.push({ label: "Processed", value: processedText });
+  }
+  if (translatorOutput) {
+    rows.push({ label: "Translator", value: translatorOutput });
+  }
+  if (translatorError) {
+    rows.push({ label: "Translator Error", value: translatorError });
+  }
+  return rows;
+}
+
+function normalizePromptPreview(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+}
+
+function finalizeWorkflowResponse({ response, workflow, onProgress, stageTemplate, preprocess }) {
+  const resolvedPreprocess = extractPreprocessPayload(response, preprocess);
+  onProgress({
+    status: "completed",
+    summary: progressSummaryForWorkflow(workflow),
+    meta: `${workflow} completed`,
+    stages: finalizeStages(stageTemplate),
+    preprocess: resolvedPreprocess,
+  });
+  return { result: response.result ?? response };
+}
+
+function extractPreprocessPayload(response, fallback = null) {
+  if (response?.preprocess && typeof response.preprocess === "object") {
+    return response.preprocess;
+  }
+  if (response?.result?.preprocess && typeof response.result.preprocess === "object") {
+    return response.result.preprocess;
+  }
+  return fallback;
+}
+
 function convertMessageToConversationTurn(message) {
-  if (!message || (message.role !== "user" && message.role !== "assistant")) {
+  if (!message || message.kind === "progress" || (message.role !== "user" && message.role !== "assistant")) {
     return null;
   }
 
@@ -1162,7 +1730,10 @@ function extractMessageContent(message) {
   }
 
   if (message.kind === "agent") {
-    return [message.payload.answer, ...(message.payload.summaryItems ?? []).map((item) => `${item.label}: ${item.value}`)]
+    return [
+      message.payload.answer,
+      ...(message.payload.summaryItems ?? []).map((item) => `${item.label}: ${item.value}`),
+    ]
       .filter(Boolean)
       .join("\n");
   }
@@ -1173,6 +1744,12 @@ function extractMessageContent(message) {
 
   if (message.kind === "analyze") {
     return [message.payload.summary, ...(message.payload.suggestions ?? [])].filter(Boolean).join("\n");
+  }
+
+  if (message.kind === "benchmark") {
+    return [message.payload.finalPreview, ...(message.payload.summaryItems ?? []).map((item) => `${item.label}: ${item.value}`)]
+      .filter(Boolean)
+      .join("\n");
   }
 
   return message.payload.answer ?? "";
@@ -1209,6 +1786,10 @@ function deriveChatTitle(currentTitle, text) {
   return truncateText(text.replace(/\s+/g, " ").trim(), 38) || "New Chat";
 }
 
+function deriveDraftTitle(prompt) {
+  return truncateText(prompt.replace(/\s+/g, " ").trim(), 42) || "Draft Note";
+}
+
 function truncateText(value, maxLength) {
   if (!value || value.length <= maxLength) {
     return value;
@@ -1226,20 +1807,82 @@ function formatTimestamp(value) {
   });
 }
 
-function placeholderForWorkflow(workflow) {
+function composerPlaceholder() {
+  return "Implement a parser for minishell redirections in C and ground the answer in my notes.";
+}
+
+function buildProgressStages(workflow) {
   if (workflow === "agent") {
-    return "Build the mandatory part of minishell as a grounded agent task, but break it into executable first slices instead of pretending the whole project is done.";
+    return [
+      { title: "Routing request", detail: "Deciding the workflow and reasoning mode.", status: "pending" },
+      { title: "Grounding context", detail: "Collecting retrieval context and repo hints.", status: "pending" },
+      { title: "Planning and discussion", detail: "Planner, critic, synthesis, and approval loop.", status: "pending" },
+      { title: "Executor summary", detail: "Finalizing task plan and actionable output.", status: "pending" },
+    ];
+  }
+
+  if (workflow === "implementation") {
+    return [
+      { title: "Routing request", detail: "Classifying this as scoped implementation work.", status: "pending" },
+      { title: "Grounding context", detail: "Loading notes and relevant implementation constraints.", status: "pending" },
+      { title: "Scoping slices", detail: "Breaking the work into ordered, reviewable slices.", status: "pending" },
+      { title: "Final answer", detail: "Returning the scoped implementation plan.", status: "pending" },
+    ];
+  }
+
+  if (workflow === "draft") {
+    return [
+      { title: "Routing request", detail: "Selecting note drafting workflow.", status: "pending" },
+      { title: "Grounding context", detail: "Collecting note context and vault constraints.", status: "pending" },
+      { title: "Draft generation", detail: "Writing the note draft and proposal.", status: "pending" },
+    ];
+  }
+
+  if (workflow === "analyze") {
+    return [
+      { title: "Routing request", detail: "Selecting directory analysis workflow.", status: "pending" },
+      { title: "Directory scan", detail: "Inspecting note inventory and graph edges.", status: "pending" },
+      { title: "Coverage report", detail: "Summarizing unresolved links and gaps.", status: "pending" },
+    ];
+  }
+
+  return [
+    { title: "Routing request", detail: "Choosing the grounded answer workflow.", status: "pending" },
+    { title: "Grounding context", detail: "Collecting notes and related graph context.", status: "pending" },
+    { title: "Answer synthesis", detail: "Producing the final coding-focused answer.", status: "pending" },
+  ];
+}
+
+function progressSummaryForWorkflow(workflow) {
+  if (workflow === "agent") {
+    return "Running planner-first agent workflow.";
   }
   if (workflow === "implementation") {
-    return "Break the task into implementation slices for a 42 minishell that should actually compile.";
-  }
-  if (workflow === "analyze") {
-    return "Analyze this knowledge slice and tell me what is missing from the graph.";
+    return "Scoping the request into safe implementation slices.";
   }
   if (workflow === "draft") {
-    return "Write a note about C parser cleanup rules and safe resource ownership.";
+    return "Drafting a grounded note proposal.";
   }
-  return "Implement a parser for minishell redirections in C and ground the answer in my notes.";
+  if (workflow === "analyze") {
+    return "Analyzing directory structure and graph coverage.";
+  }
+  return "Preparing a grounded coding answer.";
+}
+
+function markStagesActive(stages, activeIndex) {
+  return stages.map((stage, index) => {
+    if (index < activeIndex) {
+      return { ...stage, status: "completed" };
+    }
+    if (index === activeIndex) {
+      return { ...stage, status: "running" };
+    }
+    return { ...stage, status: "pending" };
+  });
+}
+
+function finalizeStages(stages) {
+  return stages.map((stage) => ({ ...stage, status: "completed" }));
 }
 
 function updateTaskPlanState(taskPlan, entryIndex, action) {
@@ -1311,6 +1954,16 @@ function serializeTaskPlanForApi(taskPlan) {
     })),
     validation_checks: taskPlan.validationChecks ?? [],
   };
+}
+
+function getLatestProgressMessage(messages) {
+  return [...messages].reverse().find((message) => message.kind === "progress") ?? null;
+}
+
+function getCurrentProgressStage(stages) {
+  return stages.find((stage) => stage.status === "running")
+    ?? [...stages].reverse().find((stage) => stage.status === "completed")
+    ?? null;
 }
 
 export default App;

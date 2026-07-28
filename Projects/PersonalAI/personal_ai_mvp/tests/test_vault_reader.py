@@ -4,7 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from personal_ai.infrastructure.vault_reader import VaultReader
+from infrastructure.vault.reader import VaultReader
+from tests.path_test_support import runtime_drafts_path
 
 
 class VaultReaderTests(unittest.TestCase):
@@ -86,8 +87,8 @@ class VaultReaderTests(unittest.TestCase):
                 "# Backup\n",
                 encoding="utf-8",
             )
-            (root / ".personal_ai" / "agent_runtime_drafts").mkdir(parents=True)
-            (root / ".personal_ai" / "agent_runtime_drafts" / "Draft.md").write_text(
+            runtime_drafts_path(root).mkdir(parents=True)
+            (runtime_drafts_path(root) / "Draft.md").write_text(
                 "# Draft\n",
                 encoding="utf-8",
             )

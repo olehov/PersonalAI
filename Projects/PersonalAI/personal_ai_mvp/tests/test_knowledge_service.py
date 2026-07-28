@@ -4,14 +4,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from personal_ai.application.knowledge_service import (
-    KnowledgeService,
+from application.knowledge.directory_analysis_service import (
+    DirectoryAnalysisService,
+)
+from application.knowledge.knowledge_service import KnowledgeService
+from application.knowledge.retrieval_service import RetrievalService
+from application.shared.serializers import (
     serialize_directory_analysis_report,
     serialize_note,
     serialize_retrieval_bundle,
 )
-from personal_ai.application.directory_analysis_service import DirectoryAnalysisService
-from personal_ai.application.retrieval_service import RetrievalService
 
 
 class CountingEmbeddingProvider:
@@ -349,6 +351,73 @@ class KnowledgeServiceTests(unittest.TestCase):
             self.assertIn("Algorithms/Heap.md", related_paths)
             self.assertNotIn("Optimizations/Caching.md", related_paths)
             self.assertNotIn("Design Patterns/Queues and Backpressure.md", related_paths)
+
+    def test_focused_coding_query_prefers_minishell_note_over_project_meta_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Languages" / "C").mkdir(parents=True)
+            (root / "Projects" / "Project Index.md").write_text(
+                "# Project Index\nMinishell project overview, roadmap, and links.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "README.md").write_text(
+                "# README\nBuild the minishell project and review the roadmap.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nParser, executor, redirections, pipes, and builtin dispatch in C.\n",
+                encoding="utf-8",
+            )
+            (root / "Languages" / "C" / "Memory Management in C.md").write_text(
+                "# Memory Management in C\nAllocation, cleanup, and ownership rules.\n",
+                encoding="utf-8",
+            )
+
+            service = KnowledgeService(root)
+            service.load()
+            bundle = RetrievalService(service).build_context(
+                "generate code for minishell parser and executor in C",
+                scope_dirs=("Projects", "Languages"),
+            )
+            payload = serialize_retrieval_bundle(bundle)
+
+            primary_paths = [item["note"]["path"] for item in payload["primary_notes"]]
+            self.assertEqual(primary_paths[0], "Projects/Minishell.md")
+            self.assertNotEqual(primary_paths[0], "Projects/Project Index.md")
+            self.assertNotEqual(primary_paths[0], "Projects/README.md")
+
+    def test_focused_coding_related_notes_do_not_pull_project_meta_tail(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Languages" / "C").mkdir(parents=True)
+            (root / "Projects" / "BSQ.md").write_text(
+                "# BSQ\nLargest square dynamic-programming solution in C.\n[[Memory Management in C]]\n[[Project Index]]\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Project Index.md").write_text(
+                "# Project Index\nBSQ overview, roadmap, and team notes.\n[[BSQ]]\n",
+                encoding="utf-8",
+            )
+            (root / "Languages" / "C" / "Memory Management in C.md").write_text(
+                "# Memory Management in C\nAllocation, cleanup, and bounds-checking rules.\n[[BSQ]]\n",
+                encoding="utf-8",
+            )
+
+            service = KnowledgeService(root)
+            service.load()
+            bundle = RetrievalService(service).build_context(
+                "write a single-file C program for bsq",
+                scope_dirs=("Projects", "Languages"),
+                primary_limit=1,
+                related_limit=4,
+            )
+            payload = serialize_retrieval_bundle(bundle)
+
+            related_paths = [item["note"]["path"] for item in payload["related_notes"]]
+            self.assertIn("Languages/C/Memory Management in C.md", related_paths)
+            self.assertNotIn("Projects/Project Index.md", related_paths)
 
     def test_directory_analysis_reports_directory_inventory_and_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

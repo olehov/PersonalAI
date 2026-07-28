@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 import json
 
-from personal_ai.application.knowledge_service import KnowledgeService
-from personal_ai.application.training_corpus_service import TrainingCorpusService
+from application.knowledge.knowledge_service import KnowledgeService
+from application.training.corpus_service import TrainingCorpusService
 
 
 class TrainingCorpusServiceTests(unittest.TestCase):

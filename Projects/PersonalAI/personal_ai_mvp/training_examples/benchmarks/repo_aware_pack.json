@@ -27,6 +27,59 @@
       ]
     },
     {
+      "task_id": "multi-turn-bsq-c-continuation",
+      "category": "multi_turn_continuation",
+      "title": "Continue a BSQ C Implementation Across Follow-Up Turns",
+      "objective": "Measure whether the model can keep coding context across follow-up turns instead of restarting from scratch.",
+      "workflow": "ask",
+      "scope_dirs": ["Projects", "Languages/C", "Algorithms"],
+      "prompt": "Implement BSQ in C incrementally and continue from prior steps.",
+      "expected_signals": [
+        "continues from previous turn",
+        "keeps file and function naming consistent",
+        "stays code-first",
+        "does not restart the whole explanation on every turn"
+      ],
+      "anti_signals": [
+        "restarts from scratch",
+        "forgets previously proposed files",
+        "falls back to generic algorithm theory"
+      ],
+      "notes": [
+        "Primary continuation benchmark for ask workflow."
+      ],
+      "turns": [
+        {
+          "prompt": "Generate the first implementation slice for BSQ on C: file layout, key structs, and the parsing entrypoint.",
+          "expected_signals": [
+            "mentions concrete files",
+            "defines a narrow first slice"
+          ]
+        },
+        {
+          "prompt": "Good. Now continue from that exact structure and write the DP core and the square-selection flow without renaming the files you already proposed.",
+          "expected_signals": [
+            "continues same structure",
+            "adds DP flow"
+          ],
+          "anti_signals": [
+            "introduces unrelated new layout"
+          ]
+        },
+        {
+          "prompt": "Finish the remaining slice: output/update path, error handling, and what to validate next. Do not restart the whole answer.",
+          "expected_signals": [
+            "finishes incrementally",
+            "mentions validation"
+          ],
+          "anti_signals": [
+            "full restart",
+            "generic summary only"
+          ]
+        }
+      ]
+    },
+    {
       "task_id": "repo-analysis-minishell-layout",
       "category": "repository_analysis",
       "title": "Analyze the Current Minishell Repository Layout",
@@ -70,6 +123,58 @@
       ],
       "notes": [
         "This benchmark is about planning quality, not execution."
+      ]
+    },
+    {
+      "task_id": "multi-turn-minishell-slice-continuation",
+      "category": "multi_turn_continuation",
+      "title": "Continue a Minishell First Slice Across Planning Follow-Ups",
+      "objective": "Measure whether the model preserves repo-aware planning context and continues a narrow minishell slice through multiple turns.",
+      "workflow": "implementation",
+      "scope_dirs": ["Projects", "Languages/C", "Linux"],
+      "prompt": "Plan minishell in follow-up slices and keep continuity between turns.",
+      "expected_signals": [
+        "preserves slice ordering",
+        "continues the same parser-focused plan",
+        "mentions validation for each slice"
+      ],
+      "anti_signals": [
+        "replans from zero every turn",
+        "switches to unrelated shell topics",
+        "jumps to full implementation"
+      ],
+      "notes": [
+        "Good benchmark for follow-up scoping quality."
+      ],
+      "turns": [
+        {
+          "prompt": "Break 42 minishell into safe implementation slices and make the first slice only parser/tokenizer focused.",
+          "expected_signals": [
+            "parser/tokenizer first",
+            "ordered slices"
+          ]
+        },
+        {
+          "prompt": "Continue from that exact plan and expand only the first slice into concrete files, functions, and validation checks.",
+          "expected_signals": [
+            "same first slice",
+            "concrete files and validation"
+          ],
+          "anti_signals": [
+            "rewrites whole roadmap"
+          ]
+        },
+        {
+          "prompt": "Now continue once more and define the second slice so it depends cleanly on the parser/tokenizer slice you already described.",
+          "expected_signals": [
+            "second slice depends on first",
+            "keeps continuity"
+          ],
+          "anti_signals": [
+            "drops parser context",
+            "starts unrelated bonus features"
+          ]
+        }
       ]
     },
     {

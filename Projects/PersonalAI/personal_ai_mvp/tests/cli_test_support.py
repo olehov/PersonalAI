@@ -7,8 +7,8 @@ from contextlib import redirect_stdout
 from datetime import UTC, datetime
 from pathlib import Path
 
-from personal_ai.cli import main
-from personal_ai.domain.models import (
+from cli_app.entry import main
+from domain.models import (
     PromptPatchPlan,
     PromptPatchSuggestion,
     TrainingEvaluationExampleResult,

@@ -2,7 +2,6 @@ param(
     [ValidateSet("start", "stop", "restart", "status")]
     [string]$Action = "status",
 
-    [ValidateSet("all", "ollama", "backend", "frontend")]
     [string[]]$Components = @("all"),
 
     [string]$EnvFile = ".env",
@@ -62,6 +61,87 @@ function Resolve-CommandPath {
 function Ensure-RuntimeDir {
     if (-not (Test-Path $runtimeDir)) {
         New-Item -ItemType Directory -Path $runtimeDir | Out-Null
+    }
+}
+
+function Split-HostPort {
+    param(
+        [string]$Url,
+        [int]$DefaultPort
+    )
+
+    if (-not $Url) {
+        return @{
+            Host = $BindHost
+            Port = $DefaultPort
+        }
+    }
+
+    try {
+        $uri = [Uri]$Url
+        $port = if ($uri.Port -gt 0) { $uri.Port } else { $DefaultPort }
+        return @{
+            Host = $uri.Host
+            Port = $port
+        }
+    }
+    catch {
+        return @{
+            Host = $BindHost
+            Port = $DefaultPort
+        }
+    }
+}
+
+function Test-TcpEndpoint {
+    param(
+        [string]$TargetHost,
+        [int]$Port,
+        [int]$TimeoutMs = 800
+    )
+
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $asyncResult = $client.BeginConnect($TargetHost, $Port, $null, $null)
+        if (-not $asyncResult.AsyncWaitHandle.WaitOne($TimeoutMs, $false)) {
+            return $false
+        }
+        $client.EndConnect($asyncResult)
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $client.Dispose()
+    }
+}
+
+function Test-HttpJsonHealth {
+    param([string]$Url)
+
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2 -ErrorAction Stop
+        if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
+            return $false
+        }
+        $payload = $response.Content | ConvertFrom-Json -ErrorAction SilentlyContinue
+        return $null -ne $payload -and $payload.status -eq "ok"
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-FrontendHttp {
+    param([string]$Url)
+
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2 -ErrorAction Stop
+        return $response.StatusCode -ge 200 -and $response.StatusCode -lt 500
+    }
+    catch {
+        return $false
     }
 }
 
@@ -158,7 +238,7 @@ function Get-OllamaProcess {
 
 function Get-BackendProcess {
     return Find-ProcessByCommandLine "backend" {
-        $_.CommandLine -match 'personal_ai\.web_ui' -and
+        $_.CommandLine -match 'web_app\.cli|(\s|^)web_ui(\s|$)' -and
         $_.CommandLine -like "*$VaultRoot*" -and
         $_.CommandLine -like "*$BackendPort*"
     }
@@ -184,6 +264,35 @@ function Get-ComponentProcess {
     }
 }
 
+function Test-ComponentEndpoint {
+    param([string]$Component)
+
+    switch ($Component) {
+        "ollama" {
+            $target = Split-HostPort -Url $env:OLLAMA_HOST -DefaultPort 11434
+            return Test-TcpEndpoint -TargetHost $target.Host -Port $target.Port
+        }
+        "backend" {
+            return Test-HttpJsonHealth -Url "http://$BindHost`:$BackendPort/api/health"
+        }
+        "frontend" {
+            return Test-FrontendHttp -Url "http://$BindHost`:$FrontendPort/"
+        }
+        default { return $false }
+    }
+}
+
+function Get-ComponentUrl {
+    param([string]$Component)
+
+    switch ($Component) {
+        "ollama" { return $env:OLLAMA_HOST }
+        "backend" { return "http://$BindHost`:$BackendPort" }
+        "frontend" { return "http://$BindHost`:$FrontendPort" }
+        default { return "" }
+    }
+}
+
 function Start-Component {
     param([string]$Component)
 
@@ -196,6 +305,8 @@ function Start-Component {
     Ensure-RuntimeDir
     $stdoutPath = Get-LogPath -Component $Component -Stream "stdout"
     $stderrPath = Get-LogPath -Component $Component -Stream "stderr"
+    Set-Content -Path $stdoutPath -Value "" -Encoding utf8
+    Set-Content -Path $stderrPath -Value "" -Encoding utf8
 
     switch ($Component) {
         "ollama" {
@@ -213,7 +324,7 @@ function Start-Component {
             $started = Start-Process -FilePath $pythonExe `
                 -ArgumentList @(
                     "-m",
-                    "personal_ai.web_ui",
+                    "web_app.cli",
                     "--vault",
                     $VaultRoot,
                     "--host",
@@ -273,29 +384,50 @@ function Show-Status {
 
     foreach ($component in $ResolvedComponents) {
         $process = Get-ComponentProcess $component
-        if ($null -eq $process) {
-            Write-Host "[$component] stopped"
+        $endpointHealthy = Test-ComponentEndpoint $component
+        $details = "url=$(Get-ComponentUrl $component)"
+
+        if ($null -ne $process -and $endpointHealthy) {
+            Write-Host "[$component] running pid=$($process.Id) $details"
             continue
         }
-
-        $details = switch ($component) {
-            "ollama" { "url=$env:OLLAMA_HOST" }
-            "backend" { "url=http://$BindHost`:$BackendPort" }
-            "frontend" { "url=http://$BindHost`:$FrontendPort" }
+        if ($null -ne $process) {
+            Write-Host "[$component] degraded pid=$($process.Id) $details"
+            continue
         }
-        Write-Host "[$component] running pid=$($process.Id) $details"
+        if ($endpointHealthy) {
+            Write-Host "[$component] running pid=unknown $details"
+            continue
+        }
+        Write-Host "[$component] stopped $details"
     }
 }
 
 function Resolve-Components {
     param([string[]]$RequestedComponents)
 
-    if ($RequestedComponents -contains "all") {
+    $normalizedComponents = New-Object System.Collections.Generic.List[string]
+    foreach ($component in $RequestedComponents) {
+        if ($null -eq $component) {
+            continue
+        }
+        foreach ($piece in ($component -split ",")) {
+            $trimmed = $piece.Trim()
+            if ($trimmed) {
+                $normalizedComponents.Add($trimmed)
+            }
+        }
+    }
+
+    if ($normalizedComponents.Contains("all")) {
         return @("ollama", "backend", "frontend")
     }
 
     $deduped = New-Object System.Collections.Generic.List[string]
-    foreach ($component in $RequestedComponents) {
+    foreach ($component in $normalizedComponents) {
+        if ($component -notin @("ollama", "backend", "frontend")) {
+            throw "Unsupported component: $component"
+        }
         if (-not $deduped.Contains($component)) {
             $deduped.Add($component)
         }
@@ -313,9 +445,13 @@ function Get-ReversedComponents {
 
 $envPath = Join-Path $projectRoot $EnvFile
 Load-EnvFile -Path $envPath
+Ensure-RuntimeDir
 
 if (-not $env:OLLAMA_HOST -and $env:OLLAMA_BASE_URL) {
     $env:OLLAMA_HOST = $env:OLLAMA_BASE_URL
+}
+if (-not $env:OLLAMA_HOST) {
+    $env:OLLAMA_HOST = "http://127.0.0.1:11434"
 }
 
 if (-not $env:PYTHONPATH) {

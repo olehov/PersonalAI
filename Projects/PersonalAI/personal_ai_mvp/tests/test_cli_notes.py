@@ -43,7 +43,7 @@ class NoteCliTests(CliTestSupport):
             root = Path(temp_dir)
 
             with patch(
-                "personal_ai.cli.NoteDraftService.draft_note",
+                "application.notes.draft_service.NoteDraftService.draft_note",
                 return_value=type(
                     "Draft",
                     (),
@@ -194,7 +194,7 @@ class NoteCliTests(CliTestSupport):
             root = Path(temp_dir)
 
             with patch(
-                "personal_ai.cli.NoteDraftService.draft_maintenance_plan",
+                "application.notes.draft_service.NoteDraftService.draft_maintenance_plan",
                 return_value=type(
                     "DraftPlan",
                     (),
@@ -308,7 +308,7 @@ class NoteCliTests(CliTestSupport):
             (root / "Projects" / "Vision.md").write_text("# Vision\nShort note.\n", encoding="utf-8")
 
             with patch(
-                "personal_ai.cli.NoteDraftService.draft_maintenance_finding",
+                "application.notes.draft_service.NoteDraftService.draft_maintenance_finding",
                 return_value=type(
                     "Draft",
                     (),

@@ -10,8 +10,8 @@ readme = "PersonalAI MVP Overview.md"
 requires-python = ">=3.10"
 
 [project.scripts]
-personal-ai = "personal_ai.cli:main"
-personal-ai-web = "personal_ai.web_ui:main"
+personal-ai = "cli_app.entry:main"
+personal-ai-web = "web_app.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

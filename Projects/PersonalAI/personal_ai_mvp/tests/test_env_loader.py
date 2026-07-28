@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from personal_ai.infrastructure.env_loader import load_env_file, read_bool_env
+from infrastructure.config.env_loader import load_env_file, read_bool_env
 
 
 class EnvLoaderTests(unittest.TestCase):

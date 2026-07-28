@@ -4,10 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from personal_ai.application.answer_service import AnswerService
-from personal_ai.application.knowledge_service import KnowledgeService
-from personal_ai.application.retrieval_service import RetrievalService
-from personal_ai.domain.models import (
+from application.knowledge.answer_service import AnswerService
+from application.knowledge.knowledge_service import KnowledgeService
+from application.knowledge.retrieval_service import RetrievalService
+from domain.models import (
     AgentRuntimeArtifact,
     AgentRuntimeDiscussionTrace,
     AgentRuntimeStep,
@@ -15,15 +15,16 @@ from personal_ai.domain.models import (
     AgentRuntimeTaskPlanEntry,
     GeneratedAnswer,
 )
-from personal_ai.infrastructure.query_history_repository import SQLiteQueryHistoryRepository
-from personal_ai.application.benchmark_run_service import BenchmarkRunResult
+from infrastructure.history.repository import SQLiteQueryHistoryRepository
+from application.benchmark.run_service import BenchmarkRunResult
+from tests.path_test_support import history_db_path
 
 
 class QueryHistoryRepositoryTests(unittest.TestCase):
     def test_save_and_list_generated_answers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             (root / "Shell.md").write_text(
                 "# Shell\nImplement parser and executor.\n",
                 encoding="utf-8",
@@ -69,7 +70,7 @@ class QueryHistoryRepositoryTests(unittest.TestCase):
     def test_save_and_list_agent_runtime_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             repository = SQLiteQueryHistoryRepository(database_path)
 
             artifact = AgentRuntimeArtifact(
@@ -112,7 +113,7 @@ class QueryHistoryRepositoryTests(unittest.TestCase):
     def test_agent_runtime_artifact_history_uses_compact_prompt_note_snapshots(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             (root / "Projects").mkdir()
             (root / "Projects" / "Minishell.md").write_text(
                 "# Minishell\nImplement parser and executor.\n",
@@ -160,7 +161,7 @@ class QueryHistoryRepositoryTests(unittest.TestCase):
     def test_update_agent_runtime_task_plan_persists_artifact_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             repository = SQLiteQueryHistoryRepository(database_path)
 
             artifact = AgentRuntimeArtifact(
@@ -227,7 +228,7 @@ class QueryHistoryRepositoryTests(unittest.TestCase):
     def test_save_and_list_benchmark_run_results(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             repository = SQLiteQueryHistoryRepository(database_path)
 
             repository.save_benchmark_run_result(
@@ -254,10 +255,56 @@ class QueryHistoryRepositoryTests(unittest.TestCase):
             self.assertEqual(entries[0].latency_ms, 144)
             self.assertEqual(entries[0].result_payload["status"], "needs_execution_layer")
 
+    def test_benchmark_history_compacts_multi_turn_payloads(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            database_path = history_db_path(root)
+            repository = SQLiteQueryHistoryRepository(database_path)
+
+            long_answer = "A" * 5000
+            repository.save_benchmark_run_result(
+                BenchmarkRunResult(
+                    pack_id="repo-aware-v1",
+                    task_id="multi-turn-bsq-c-continuation",
+                    category="multi_turn_continuation",
+                    workflow="ask",
+                    model="gpt-oss:20b",
+                    status="completed",
+                    scope_dirs=("Projects", "Languages/C"),
+                    prompt_text="Implement BSQ in C incrementally and continue from prior steps.",
+                    latency_ms=144,
+                    result_payload={
+                        "multi_turn": True,
+                        "turn_count": 2,
+                        "final_status": "completed",
+                        "final_payload": {
+                            "answer_text": long_answer,
+                        },
+                        "turn_results": [
+                            {
+                                "turn_index": 1,
+                                "prompt": long_answer,
+                                "status": "completed",
+                                "result_payload": {
+                                    "answer_text": long_answer,
+                                },
+                            }
+                        ],
+                    },
+                )
+            )
+
+            entries = repository.list_benchmark_runs(limit=1)
+            payload = entries[0].result_payload
+
+            self.assertTrue(payload["final_payload"]["answer_text"].endswith("..."))
+            self.assertTrue(payload["turn_results"][0]["prompt"].endswith("..."))
+            self.assertTrue(payload["turn_results"][0]["result_payload"]["answer_text"].endswith("..."))
+
     def test_generated_answer_history_prunes_old_entries_beyond_retention_limit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             (root / "Shell.md").write_text(
                 "# Shell\nImplement parser and executor.\n",
                 encoding="utf-8",
@@ -294,7 +341,7 @@ class QueryHistoryRepositoryTests(unittest.TestCase):
     def test_agent_runtime_history_prunes_old_entries_beyond_retention_limit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             repository = SQLiteQueryHistoryRepository(
                 database_path,
                 agent_run_history_retention=2,
@@ -322,7 +369,7 @@ class QueryHistoryRepositoryTests(unittest.TestCase):
     def test_agent_runtime_history_compacts_large_artifact_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             repository = SQLiteQueryHistoryRepository(database_path)
 
             long_text = "x" * 5000
@@ -358,7 +405,7 @@ class QueryHistoryRepositoryTests(unittest.TestCase):
     def test_agent_runtime_history_persists_discussion_trace_and_models(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            database_path = root / ".personal_ai" / "query_history.sqlite3"
+            database_path = history_db_path(root)
             repository = SQLiteQueryHistoryRepository(database_path)
 
             artifact = AgentRuntimeArtifact(

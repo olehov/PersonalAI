@@ -6,8 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
-from personal_ai.application import KnowledgeService, RetrievalService
-from personal_ai.application.link_sanitizer import (
+from application import KnowledgeService, RetrievalService
+from application.notes.link_sanitizer import (
     build_note_lookup,
     find_unsupported_obsidian_links,
     sanitize_generated_links,

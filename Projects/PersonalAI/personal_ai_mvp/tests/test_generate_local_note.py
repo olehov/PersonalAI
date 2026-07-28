@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 import generate_local_note
-from personal_ai.domain.models import NoteDocument, NoteMetadata, RetrievedNote, RetrievalBundle
+from domain.models import NoteDocument, NoteMetadata, RetrievedNote, RetrievalBundle
 
 
 class GenerateLocalNoteTests(unittest.TestCase):

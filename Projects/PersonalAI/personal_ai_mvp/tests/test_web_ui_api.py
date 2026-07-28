@@ -5,11 +5,111 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from personal_ai.web_ui import handle_api_request
+from domain.models import PromptMessage
+from web_app.http import handle_api_request
 from tests.web_ui_test_support import build_app, seed_agent_history
 
 
+class _MetaLeakThenRepairClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[PromptMessage, ...], dict[str, object] | None]] = []
+        self._repair_calls = 0
+
+    def chat(self, model: str, messages: tuple[PromptMessage, ...]) -> str:
+        return self.chat_with_options(model=model, messages=messages, options=None)
+
+    def chat_with_options(
+        self,
+        *,
+        model: str,
+        messages: tuple[PromptMessage, ...],
+        options: dict[str, object] | None = None,
+    ) -> str:
+        self.calls.append((model, messages, options))
+        last_message = messages[-1].content
+        if "Recursive Refinement Critique:" in last_message:
+            return "Strengths\n- Structured.\n\nIssues\n- Incomplete.\n\nMissing Grounding\n- Need completion.\n\nImprove\n- Finish it."
+        if "Recursive Refinement Final Pass:" in last_message:
+            return "Architecture\n- Draft only.\n\nCode Skeleton\n```c\nint solve_bsq("
+        if "Implementation Answer Repair Pass:" in last_message:
+            self._repair_calls += 1
+            if self._repair_calls == 1:
+                return (
+                    "We need to finish the header and provide skeleton for main.c, utils.c, and Makefile. "
+                    "Let's produce final answer with these parts."
+                )
+            return (
+                "Architecture\n- Final repaired architecture.\n\n"
+                "Modules\n- `bsq.c`\n- `map.c`\n\n"
+                "Execution Flow\n1. Parse.\n2. Solve.\n3. Print.\n\n"
+                "Edge Cases\n- Invalid rows.\n- Allocation failure.\n\n"
+                "Code Skeleton\n```c\nint solve_bsq(void)\n{\n    return 0;\n}\n```"
+            )
+        return "Architecture\n- Draft only.\n\nCode Skeleton\n```c\nint solve_bsq("
+
+    def list_models(self) -> list[str]:
+        return ["gpt-oss:20b"]
+
+
+class _FakePromptPreprocessor:
+    def __init__(self, processed_text: str) -> None:
+        self.processed_text = processed_text
+        self.calls: list[tuple[str, str | None]] = []
+        self.translator_output = processed_text
+        self.translator_error = None
+        self.fallback_reason = None
+
+    def preprocess(self, text: str, *, workflow_hint: str | None = None):  # type: ignore[no-untyped-def]
+        self.calls.append((text, workflow_hint))
+
+        class _Result:
+            def __init__(
+                self,
+                original_text: str,
+                processed_text: str,
+                translator_output: str | None,
+                translator_error: str | None,
+                fallback_reason: str | None,
+            ) -> None:
+                self.original_text = original_text
+                self.processed_text = processed_text
+                self.mode = "test-double"
+                self.applied = original_text != processed_text
+                self.translator_output = translator_output
+                self.translator_error = translator_error
+                self.fallback_reason = fallback_reason
+
+        return _Result(
+            text,
+            self.processed_text,
+            self.translator_output,
+            self.translator_error,
+            self.fallback_reason,
+        )
+
+
 class WebUIApiTests(unittest.TestCase):
+    def test_handle_api_request_supports_health_endpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Architecture.md").write_text(
+                "# Architecture\nRuntime overview.\n",
+                encoding="utf-8",
+            )
+            app = build_app(root)
+
+            status_code, payload = handle_api_request(
+                app,
+                method="GET",
+                path="/api/health",
+                body=None,
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["status"], "ok")
+            self.assertTrue(payload["vault_loaded"])
+            self.assertEqual(payload["note_count"], 1)
+
     def test_handle_api_request_validates_ask_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -184,6 +284,56 @@ class WebUIApiTests(unittest.TestCase):
             self.assertEqual(payload["result"]["discussion_trace"]["critic_feedback"], "Critic feedback")
             self.assertEqual(captured["discussion_preset"], "coder_critic")
 
+    def test_handle_api_request_leaves_agent_model_blank_for_agent_default_resolution(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app = build_app(root)
+            captured: dict[str, object] = {}
+
+            def fake_run_agent(**kwargs):  # type: ignore[no-untyped-def]
+                captured.update(kwargs)
+                return {
+                    "model": "qwen2.5-coder:7b",
+                    "request_text": kwargs["request_text"],
+                    "normalized_goal": "build minishell",
+                    "task_mode": "implementation",
+                    "status": "needs_execution_layer",
+                    "scope_dirs": ["Projects"],
+                    "citations": [],
+                    "steps": [],
+                    "recommended_actions": [],
+                    "action_executions": [],
+                    "overview": {
+                        "step_count": 0,
+                        "recommended_action_count": 0,
+                        "executed_action_count": 0,
+                        "deferred_action_count": 0,
+                        "failed_action_count": 0,
+                        "citation_count": 0,
+                        "planned_task_count": 0,
+                    },
+                    "final_output": "Goal\nConstraints",
+                    "prompt": None,
+                }
+
+            app.run_agent = fake_run_agent  # type: ignore[method-assign]
+
+            status_code, payload = handle_api_request(
+                app,
+                method="POST",
+                path="/api/agent-runtime",
+                body=json.dumps(
+                    {
+                        "request_text": "Build the mandatory part of minishell.",
+                        "scope_text": "Projects",
+                    }
+                ),
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["result"]["model"], "qwen2.5-coder:7b")
+            self.assertEqual(captured["model"], "")
+
     def test_handle_api_request_supports_agent_task_plan_update(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -260,6 +410,51 @@ class WebUIApiTests(unittest.TestCase):
             self.assertEqual(status_code, 200)
             self.assertEqual(payload["route"]["workflow"], "draft")
 
+    def test_handle_api_request_auto_route_uses_prompt_preprocessor(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app = build_app(root)
+            fake_preprocessor = _FakePromptPreprocessor("Write a note about parser cleanup.")
+            app._prompt_preprocessor = fake_preprocessor  # type: ignore[attr-defined]
+
+            status_code, payload = handle_api_request(
+                app,
+                method="POST",
+                path="/api/auto-route",
+                body=json.dumps({"prompt": "opaque prompt"}),
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["route"]["workflow"], "draft")
+            self.assertEqual(fake_preprocessor.calls, [("opaque prompt", "route")])
+            self.assertEqual(
+                payload["preprocess"]["translator_output"],
+                "Write a note about parser cleanup.",
+            )
+
+    def test_handle_api_request_supports_auto_route_with_follow_up_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app = build_app(root)
+
+            status_code, payload = handle_api_request(
+                app,
+                method="POST",
+                path="/api/auto-route",
+                body=json.dumps(
+                    {
+                        "prompt": "you did not finish the task",
+                        "chat_history": [
+                            {"role": "user", "content": "Generate code for bsq in C."},
+                            {"role": "assistant", "content": "Started with a file layout."},
+                        ],
+                    }
+                ),
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["route"]["workflow"], "implementation")
+
     def test_handle_api_request_supports_auto_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -299,6 +494,56 @@ class WebUIApiTests(unittest.TestCase):
             self.assertEqual(payload["reasoning_mode"], "high")
             self.assertEqual(payload["result"]["model"], "deepseek-r1:8b")
             self.assertNotIn("discussion_preset", captured)
+
+    def test_handle_api_request_auto_run_uses_prompt_preprocessor(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app = build_app(root)
+            fake_preprocessor = _FakePromptPreprocessor(
+                "Break the task into implementation slices for minishell."
+            )
+            app._prompt_preprocessor = fake_preprocessor  # type: ignore[attr-defined]
+            captured: dict[str, object] = {}
+
+            def fake_scope_implementation(**kwargs):  # type: ignore[no-untyped-def]
+                captured.update(kwargs)
+                return {
+                    "model": kwargs["model"],
+                    "question": kwargs["request_text"],
+                    "answer_text": "Goal\nConstraints\nModules\nIncremental Slices\nFirst Slice\nValidation",
+                    "citations": [],
+                    "prompt": {
+                        "task_mode": "implementation",
+                        "retrieval": {"primary_notes": [], "related_notes": []},
+                    },
+                }
+
+            app.scope_implementation = fake_scope_implementation  # type: ignore[method-assign]
+
+            status_code, payload = handle_api_request(
+                app,
+                method="POST",
+                path="/api/auto-run",
+                body=json.dumps(
+                    {
+                        "prompt": "opaque prompt",
+                        "model": "deepseek-r1:8b",
+                        "scope_text": "Projects",
+                    }
+                ),
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["route"]["workflow"], "implementation")
+            self.assertEqual(
+                captured["request_text"],
+                "Break the task into implementation slices for minishell.",
+            )
+            self.assertEqual(fake_preprocessor.calls, [("opaque prompt", "auto")])
+            self.assertEqual(
+                payload["preprocess"]["translator_output"],
+                "Break the task into implementation slices for minishell.",
+            )
 
     def test_handle_api_request_passes_chat_history_to_ask(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -342,6 +587,143 @@ class WebUIApiTests(unittest.TestCase):
             self.assertEqual(payload["result"]["answer_text"], "Follow-up answer")
             self.assertEqual(len(captured["conversation_history"]), 2)
             self.assertEqual(captured["conversation_history"][0].role, "user")
+
+    def test_handle_api_request_passes_chat_history_through_auto_run_to_ask(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app = build_app(root)
+            captured: dict[str, object] = {}
+
+            def fake_ask(**kwargs):  # type: ignore[no-untyped-def]
+                captured.update(kwargs)
+                return {
+                    "model": kwargs["model"],
+                    "question": kwargs["question"],
+                    "answer_text": "Context-aware follow-up answer",
+                    "citations": [],
+                    "prompt": {
+                        "task_mode": "general",
+                        "retrieval": {"primary_notes": [], "related_notes": []},
+                    },
+                }
+
+            app.ask = fake_ask  # type: ignore[method-assign]
+
+            status_code, payload = handle_api_request(
+                app,
+                method="POST",
+                path="/api/auto-run",
+                body=json.dumps(
+                    {
+                        "prompt": "Summarize the parser discussion so far.",
+                        "model": "gpt-oss:20b",
+                        "scope_text": "Projects, Languages/C",
+                        "chat_history": [
+                            {"role": "user", "content": "Generate code for bsq in C."},
+                            {"role": "assistant", "content": "Started with file layout and header skeleton."},
+                        ],
+                    }
+                ),
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["route"]["workflow"], "ask")
+            self.assertEqual(payload["result"]["answer_text"], "Context-aware follow-up answer")
+            self.assertEqual(len(captured["conversation_history"]), 2)
+            self.assertEqual(captured["conversation_history"][0].content, "Generate code for bsq in C.")
+            self.assertEqual(captured["conversation_history"][1].role, "assistant")
+
+    def test_handle_api_request_locks_follow_up_auto_run_to_previous_implementation_task(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app = build_app(root)
+            captured: dict[str, object] = {}
+
+            def fake_scope_implementation(**kwargs):  # type: ignore[no-untyped-def]
+                captured.update(kwargs)
+                return {
+                    "model": kwargs["model"],
+                    "question": kwargs["request_text"],
+                    "answer_text": "Completed implementation follow-up",
+                    "citations": [],
+                    "prompt": {
+                        "task_mode": "implementation",
+                        "retrieval": {"primary_notes": [], "related_notes": []},
+                    },
+                }
+
+            app.scope_implementation = fake_scope_implementation  # type: ignore[method-assign]
+
+            status_code, payload = handle_api_request(
+                app,
+                method="POST",
+                path="/api/auto-run",
+                body=json.dumps(
+                    {
+                        "prompt": "you did not finish the task",
+                        "model": "gpt-oss:20b",
+                        "scope_text": "Projects, Languages/C",
+                        "chat_history": [
+                            {"role": "user", "content": "Generate code for bsq in C."},
+                            {"role": "assistant", "content": "Started with a file layout and partial code."},
+                        ],
+                    }
+                ),
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["route"]["workflow"], "implementation")
+            self.assertEqual(payload["result"]["answer_text"], "Completed implementation follow-up")
+            self.assertEqual(captured["request_text"], "you did not finish the task")
+
+    def test_handle_api_request_auto_run_repairs_follow_up_meta_leakage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "BSQ.md").write_text(
+                "# BSQ\nDynamic programming, memory cleanup, and output rendering in C.\n",
+                encoding="utf-8",
+            )
+            app = build_app(root)
+            fake_client = _MetaLeakThenRepairClient()
+            app._chat._ollama_client = fake_client  # type: ignore[attr-defined]
+
+            status_code, payload = handle_api_request(
+                app,
+                method="POST",
+                path="/api/auto-run",
+                body=json.dumps(
+                    {
+                        "prompt": "you did not finish the task",
+                        "model": "gpt-oss:20b",
+                        "scope_text": "Projects, Languages/C",
+                        "reasoning_mode": "high",
+                        "chat_history": [
+                            {
+                                "role": "user",
+                                "content": "Generate code for bsq in C with architecture, modules, execution flow, edge cases, and code skeleton.",
+                            },
+                            {
+                                "role": "assistant",
+                                "content": (
+                                    "Architecture\n- Use dynamic programming.\n\n"
+                                    "Code Skeleton\n```c\nint **mat = malloc(rows * sizeof(int *));\n"
+                                ),
+                            },
+                        ],
+                    }
+                ),
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["route"]["workflow"], "implementation")
+            self.assertIn("Execution Flow", payload["result"]["answer_text"])
+            self.assertIn("int solve_bsq(void)", payload["result"]["answer_text"])
+            self.assertEqual(len(fake_client.calls), 5)
+            self.assertIn("Implementation Answer Repair Pass:", fake_client.calls[3][1][-1].content)
+            self.assertIn(
+                "The answer leaked internal repair or planning commentary",
+                fake_client.calls[4][1][-1].content,
+            )
 
     def test_handle_api_request_passes_reasoning_mode_to_ask(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

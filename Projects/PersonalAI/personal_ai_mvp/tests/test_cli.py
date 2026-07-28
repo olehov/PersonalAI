@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.cli_test_support import CliTestSupport
+from tests.path_test_support import history_db_path
 
 
 class CliTests(CliTestSupport):
@@ -140,7 +141,7 @@ class CliTests(CliTestSupport):
             )
 
             with patch(
-                "personal_ai.cli.ChatService.ask",
+                "application.chat.service.ChatService.ask",
                 return_value=type(
                     "Generated",
                     (),
@@ -179,7 +180,7 @@ class CliTests(CliTestSupport):
             )
 
             with patch(
-                "personal_ai.cli.AgentRuntimeService.run",
+                "application.agent_runtime.service.AgentRuntimeService.run",
                 return_value=type(
                     "Artifact",
                     (),
@@ -272,7 +273,7 @@ class CliTests(CliTestSupport):
             )
 
             with patch(
-                "personal_ai.cli.AgentRuntimeService.run",
+                "application.agent_runtime.service.AgentRuntimeService.run",
                 return_value=type(
                     "Artifact",
                     (),
@@ -351,7 +352,7 @@ class CliTests(CliTestSupport):
     def test_ask_persists_history_and_history_command_reads_it(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            history_db = root / ".personal_ai" / "query_history.sqlite3"
+            history_db = history_db_path(root)
             (root / "Projects").mkdir()
             (root / "Projects" / "Shell.md").write_text(
                 "# Shell\nImplement parser and executor modules.\n",
@@ -359,7 +360,7 @@ class CliTests(CliTestSupport):
             )
 
             with patch(
-                "personal_ai.cli.OllamaClient.chat",
+                "infrastructure.llm.ollama_client.OllamaClient.chat",
                 return_value="Architecture\nModules\nExecution Flow\nEdge Cases\nCode Skeleton",
             ):
                 ask_exit_code, _ = self._run_cli_json(
@@ -401,10 +402,10 @@ class CliTests(CliTestSupport):
     def test_agent_history_reads_persisted_agent_runtime_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            history_db = root / ".personal_ai" / "query_history.sqlite3"
+            history_db = history_db_path(root)
 
-            from personal_ai.infrastructure.query_history_repository import SQLiteQueryHistoryRepository
-            from personal_ai.domain.models import AgentRuntimeArtifact
+            from infrastructure.history.repository import SQLiteQueryHistoryRepository
+            from domain.models import AgentRuntimeArtifact
 
             repository = SQLiteQueryHistoryRepository(history_db)
             repository.save_agent_runtime_artifact(

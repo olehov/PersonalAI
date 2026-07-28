@@ -4,13 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from personal_ai.application.knowledge_service import (
-    KnowledgeService,
-    serialize_maintenance_report,
-)
-from personal_ai.application.maintenance_service import KnowledgeMaintenanceService
-from personal_ai.application.note_mutation_service import NoteMutationService
-from personal_ai.application.note_policy import NotePolicy
+from application.knowledge.knowledge_service import KnowledgeService
+from application.notes.maintenance_service import KnowledgeMaintenanceService
+from application.notes.mutation_service import NoteMutationService
+from application.notes.policy import NotePolicy
+from application.shared.serializers import serialize_maintenance_report
 
 
 class KnowledgeMaintenanceServiceTests(unittest.TestCase):

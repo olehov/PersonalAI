@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from personal_ai.domain.models import (
+from domain.models import (
     TrainingEvaluationComparison,
     TrainingEvaluationLeaderboard,
     TrainingEvaluationLeaderboardEntry,
@@ -153,11 +153,11 @@ class TrainingCliTests(CliTestSupport):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
 
-            with patch("personal_ai.cli.TrainingEvalService.load_history", return_value=()), patch(
-                "personal_ai.cli.TrainingEvalService.build_prompt_patch_plan",
+            with patch("application.training.eval_service.TrainingEvalService.load_history", return_value=()), patch(
+                "application.training.eval_service.TrainingEvalService.build_prompt_patch_plan",
                 return_value=self._prompt_patch_plan(),
             ), patch(
-                "personal_ai.cli.TrainingEvalService.evaluate",
+                "application.training.eval_service.TrainingEvalService.evaluate",
                 return_value=self._training_report(
                     average_score=0.875,
                     exact_match_rate=0.5,
@@ -201,8 +201,8 @@ class TrainingCliTests(CliTestSupport):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
 
-            with patch("personal_ai.cli.TrainingEvalService.load_history", return_value=()), patch(
-                "personal_ai.cli.TrainingEvalService.build_prompt_patch_plan",
+            with patch("application.training.eval_service.TrainingEvalService.load_history", return_value=()), patch(
+                "application.training.eval_service.TrainingEvalService.build_prompt_patch_plan",
                 return_value=self._prompt_patch_plan(
                     optimized_system_prompt="base\n- Start directly with note content.",
                     suggestions=(
@@ -215,7 +215,7 @@ class TrainingCliTests(CliTestSupport):
                     ),
                 ),
             ), patch(
-                "personal_ai.cli.TrainingEvalService.evaluate",
+                "application.training.eval_service.TrainingEvalService.evaluate",
                 return_value=self._training_report(average_score=0.5),
             ) as evaluate_mock:
                 exit_code, _payload = self._run_cli_json(
@@ -245,8 +245,8 @@ class TrainingCliTests(CliTestSupport):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
 
-            with patch("personal_ai.cli.TrainingEvalService.load_history", return_value=()), patch(
-                "personal_ai.cli.TrainingEvalService.build_leaderboard",
+            with patch("application.training.eval_service.TrainingEvalService.load_history", return_value=()), patch(
+                "application.training.eval_service.TrainingEvalService.build_leaderboard",
                 return_value=TrainingEvaluationLeaderboard(
                     total_runs=2,
                     entries=(
@@ -316,8 +316,8 @@ class TrainingCliTests(CliTestSupport):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
 
-            with patch("personal_ai.cli.TrainingEvalService.load_history", return_value=()), patch(
-                "personal_ai.cli.TrainingEvalService.build_prompt_patch_plan",
+            with patch("application.training.eval_service.TrainingEvalService.load_history", return_value=()), patch(
+                "application.training.eval_service.TrainingEvalService.build_prompt_patch_plan",
                 return_value=self._prompt_patch_plan(
                     base_system_prompt="base prompt",
                     optimized_system_prompt="base prompt\n\nAdditional Focus Instructions:\n- Preserve heading hierarchy.",
@@ -367,14 +367,14 @@ class TrainingCliTests(CliTestSupport):
                 ),
             )
 
-            with patch("personal_ai.cli.TrainingEvalService.load_history", return_value=()), patch(
-                "personal_ai.cli.TrainingEvalService.build_prompt_patch_plan",
+            with patch("application.training.eval_service.TrainingEvalService.load_history", return_value=()), patch(
+                "application.training.eval_service.TrainingEvalService.build_prompt_patch_plan",
                 return_value=prompt_plan,
             ), patch(
-                "personal_ai.cli.TrainingEvalService.evaluate",
+                "application.training.eval_service.TrainingEvalService.evaluate",
                 side_effect=[baseline_report, optimized_report],
             ), patch(
-                "personal_ai.cli.TrainingEvalService.compare_reports",
+                "application.training.eval_service.TrainingEvalService.compare_reports",
                 return_value=TrainingEvaluationComparison(
                     model="llama3:latest",
                     subset="validation",
@@ -411,10 +411,10 @@ class TrainingCliTests(CliTestSupport):
             root = Path(temp_dir)
 
             with patch(
-                "personal_ai.cli.TrainingEvalService.load_comparison_history",
+                "application.training.eval_service.TrainingEvalService.load_comparison_history",
                 return_value=(),
             ), patch(
-                "personal_ai.cli.TrainingEvalService.build_optimizer_leaderboard",
+                "application.training.eval_service.TrainingEvalService.build_optimizer_leaderboard",
                 return_value=TrainingOptimizerLeaderboard(
                     total_runs=2,
                     entries=(
@@ -483,11 +483,11 @@ class TrainingCliTests(CliTestSupport):
                 ),
             )
 
-            with patch("personal_ai.cli.TrainingEvalService.load_history", return_value=()), patch(
-                "personal_ai.cli.TrainingEvalService.run_optimizer_sweep",
+            with patch("application.training.eval_service.TrainingEvalService.load_history", return_value=()), patch(
+                "application.training.eval_service.TrainingEvalService.run_optimizer_sweep",
                 return_value=sweep_report,
             ), patch(
-                "personal_ai.cli.TrainingEvalService.append_comparison",
+                "application.training.eval_service.TrainingEvalService.append_comparison",
                 return_value=None,
             ):
                 exit_code, payload = self._run_cli_json(
@@ -570,7 +570,7 @@ class TrainingCliTests(CliTestSupport):
             )
 
             with patch(
-                "personal_ai.cli.TrainingFineTuneService.build_bundle",
+                "application.training.fine_tune_service.TrainingFineTuneService.build_bundle",
                 return_value=bundle,
             ):
                 exit_code, payload = self._run_cli_json(

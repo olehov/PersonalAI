@@ -5,8 +5,9 @@ import socket
 import unittest
 from unittest.mock import patch
 from urllib import error
+import json
 
-from personal_ai.infrastructure.ollama_client import OllamaClient
+from infrastructure.llm.ollama_client import OllamaClient
 
 
 class OllamaClientTests(unittest.TestCase):
@@ -38,7 +39,7 @@ class OllamaClientTests(unittest.TestCase):
         client = OllamaClient(timeout_seconds=12)
 
         with patch(
-            "personal_ai.infrastructure.ollama_client.request.urlopen",
+            "infrastructure.llm.ollama_client.request.urlopen",
             side_effect=socket.timeout("timed out"),
         ):
             with self.assertRaises(RuntimeError) as context:
@@ -51,7 +52,7 @@ class OllamaClientTests(unittest.TestCase):
         client = OllamaClient(timeout_seconds=34)
 
         with patch(
-            "personal_ai.infrastructure.ollama_client.request.urlopen",
+            "infrastructure.llm.ollama_client.request.urlopen",
             side_effect=error.URLError(socket.timeout("timed out")),
         ):
             with self.assertRaises(RuntimeError) as context:
@@ -64,7 +65,7 @@ class OllamaClientTests(unittest.TestCase):
         client = OllamaClient(base_url="http://127.0.0.1:11435", timeout_seconds=34)
 
         with patch(
-            "personal_ai.infrastructure.ollama_client.request.urlopen",
+            "infrastructure.llm.ollama_client.request.urlopen",
             side_effect=error.URLError(ConnectionResetError("connection reset by peer")),
         ):
             with self.assertRaises(RuntimeError) as context:
@@ -97,7 +98,7 @@ class OllamaClientTests(unittest.TestCase):
             raise AssertionError(http_request.full_url)
 
         with patch(
-            "personal_ai.infrastructure.ollama_client.request.urlopen",
+            "infrastructure.llm.ollama_client.request.urlopen",
             side_effect=_fake_urlopen,
         ):
             self.assertEqual(client.list_models(), ["gemma:latest"])
@@ -108,7 +109,7 @@ class OllamaClientTests(unittest.TestCase):
         client = OllamaClient(base_url="http://127.0.0.1:11435", timeout_seconds=34)
 
         with patch(
-            "personal_ai.infrastructure.ollama_client.request.urlopen",
+            "infrastructure.llm.ollama_client.request.urlopen",
             side_effect=error.URLError(ConnectionRefusedError("actively refused")),
         ):
             with self.assertRaises(RuntimeError) as context:
@@ -117,6 +118,140 @@ class OllamaClientTests(unittest.TestCase):
         self.assertIn("actively refused", str(context.exception))
         self.assertIn("Attempted base URLs", str(context.exception))
         self.assertIn("http://127.0.0.1:11434", str(context.exception))
+
+    def test_chat_uses_thinking_field_when_content_is_empty(self) -> None:
+        client = OllamaClient(base_url="http://127.0.0.1:11435", timeout_seconds=34)
+
+        class _Response:
+            def read(self) -> bytes:
+                return (
+                    '{"message":{"role":"assistant","content":"","thinking":"Planning fallback text."}}'
+                ).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+        with patch(
+            "infrastructure.llm.ollama_client.request.urlopen",
+            return_value=_Response(),
+        ):
+            result = client.chat(
+                model="gpt-oss:20b",
+                messages=(),
+            )
+
+        self.assertEqual(result, "Planning fallback text.")
+
+    def test_chat_prefers_response_field_before_thinking_when_content_is_empty(self) -> None:
+        client = OllamaClient(base_url="http://127.0.0.1:11435", timeout_seconds=34)
+
+        class _Response:
+            def read(self) -> bytes:
+                return (
+                    '{"message":{"role":"assistant","content":"","thinking":"internal reasoning"},'
+                    '"response":"Final visible answer."}'
+                ).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+        with patch(
+            "infrastructure.llm.ollama_client.request.urlopen",
+            return_value=_Response(),
+        ):
+            result = client.chat(
+                model="gpt-oss:20b",
+                messages=(),
+            )
+
+        self.assertEqual(result, "Final visible answer.")
+
+    def test_chat_applies_default_num_ctx_override_for_matching_model_prefix(self) -> None:
+        original_mapping = os.environ.get("PERSONAL_AI_OLLAMA_NUM_CTX_BY_MODEL")
+        try:
+            os.environ["PERSONAL_AI_OLLAMA_NUM_CTX_BY_MODEL"] = "gpt-oss=2048"
+            client = OllamaClient(base_url="http://127.0.0.1:11434", timeout_seconds=34)
+
+            class _Response:
+                def read(self) -> bytes:
+                    return (
+                        '{"message":{"role":"assistant","content":"OK"}}'
+                    ).encode("utf-8")
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb) -> None:
+                    return None
+
+            captured: dict[str, object] = {}
+
+            def _fake_urlopen(http_request, timeout):
+                captured["body"] = json.loads(http_request.data.decode("utf-8"))
+                return _Response()
+
+            with patch(
+                "infrastructure.llm.ollama_client.request.urlopen",
+                side_effect=_fake_urlopen,
+            ):
+                result = client.chat(model="gpt-oss:20b", messages=())
+
+            self.assertEqual(result, "OK")
+            self.assertEqual(captured["body"]["options"]["num_ctx"], 2048)
+        finally:
+            if original_mapping is None:
+                os.environ.pop("PERSONAL_AI_OLLAMA_NUM_CTX_BY_MODEL", None)
+            else:
+                os.environ["PERSONAL_AI_OLLAMA_NUM_CTX_BY_MODEL"] = original_mapping
+
+    def test_chat_preserves_explicit_num_ctx_option(self) -> None:
+        original_mapping = os.environ.get("PERSONAL_AI_OLLAMA_NUM_CTX_BY_MODEL")
+        try:
+            os.environ["PERSONAL_AI_OLLAMA_NUM_CTX_BY_MODEL"] = "gpt-oss=2048"
+            client = OllamaClient(base_url="http://127.0.0.1:11434", timeout_seconds=34)
+
+            class _Response:
+                def read(self) -> bytes:
+                    return (
+                        '{"message":{"role":"assistant","content":"OK"}}'
+                    ).encode("utf-8")
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb) -> None:
+                    return None
+
+            captured: dict[str, object] = {}
+
+            def _fake_urlopen(http_request, timeout):
+                captured["body"] = json.loads(http_request.data.decode("utf-8"))
+                return _Response()
+
+            with patch(
+                "infrastructure.llm.ollama_client.request.urlopen",
+                side_effect=_fake_urlopen,
+            ):
+                result = client.chat_with_options(
+                    model="gpt-oss:20b",
+                    messages=(),
+                    options={"num_ctx": 4096, "num_predict": 64},
+                )
+
+            self.assertEqual(result, "OK")
+            self.assertEqual(captured["body"]["options"]["num_ctx"], 4096)
+            self.assertEqual(captured["body"]["options"]["num_predict"], 64)
+        finally:
+            if original_mapping is None:
+                os.environ.pop("PERSONAL_AI_OLLAMA_NUM_CTX_BY_MODEL", None)
+            else:
+                os.environ["PERSONAL_AI_OLLAMA_NUM_CTX_BY_MODEL"] = original_mapping
 
 
 if __name__ == "__main__":

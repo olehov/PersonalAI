@@ -3,11 +3,11 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from personal_ai.application.agent_tool_registry import (
+from application.agent_runtime.tool_registry import (
     AgentToolContext,
     AgentToolRegistry,
 )
-from personal_ai.domain.models import AgentRuntimeAction
+from domain.models import AgentRuntimeAction
 
 
 class AgentToolRegistryTests(unittest.TestCase):
@@ -50,7 +50,7 @@ class AgentToolRegistryTests(unittest.TestCase):
 
         def executor(executed_action, context):
             return __import__(
-                "personal_ai.domain.models",
+                "domain.models",
                 fromlist=["AgentRuntimeActionExecution"],
             ).AgentRuntimeActionExecution(
                 action_type=executed_action.action_type,

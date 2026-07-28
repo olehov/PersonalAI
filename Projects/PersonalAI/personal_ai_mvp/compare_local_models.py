@@ -6,10 +6,10 @@ import argparse
 import json
 from pathlib import Path
 
-from personal_ai.application.knowledge_service import KnowledgeService
-from personal_ai.application.training_corpus_service import TrainingCorpusService
-from personal_ai.application.training_eval_service import TrainingEvalService
-from personal_ai.infrastructure.ollama_client import OllamaClient
+from application.knowledge_service import KnowledgeService
+from application.training_corpus_service import TrainingCorpusService
+from application.training_eval_service import TrainingEvalService
+from infrastructure.llm.ollama_client import OllamaClient
 
 
 def build_parser() -> argparse.ArgumentParser:

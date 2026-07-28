@@ -3,12 +3,12 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from personal_ai.application.link_sanitizer import (
+from application.notes.link_sanitizer import (
     build_note_lookup,
     find_unsupported_obsidian_links,
     sanitize_generated_links,
 )
-from personal_ai.domain.models import NoteDocument, NoteLink, NoteMetadata
+from domain.models import NoteDocument, NoteLink, NoteMetadata
 
 
 class LinkSanitizerTests(unittest.TestCase):

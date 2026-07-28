@@ -5,12 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from personal_ai.application.answer_service import AnswerService
-from personal_ai.application.knowledge_service import (
-    KnowledgeService,
-    serialize_answer_bundle,
-)
-from personal_ai.application.retrieval_service import RetrievalService
+from application.knowledge.answer_service import AnswerService
+from application.knowledge.knowledge_service import KnowledgeService
+from application.knowledge.retrieval_service import RetrievalService
+from application.shared.serializers import serialize_answer_bundle
 
 
 class AnswerServiceTests(unittest.TestCase):
@@ -187,10 +185,13 @@ class AnswerServiceTests(unittest.TestCase):
             self.assertEqual(payload["task_mode"], "implementation")
             self.assertIn("Task Mode:\nimplementation", prompt)
             self.assertIn("implementation mode: lead with a concrete build plan or code skeleton", prompt)
-            self.assertIn("Response Contract:", prompt)
-            self.assertIn("Architecture, Modules, Execution Flow, Edge Cases, Code Skeleton", prompt)
+            self.assertIn("Preferred Coverage:", prompt)
+            self.assertIn("exact heading names are optional", prompt)
+            self.assertIn("If you start a code block for a file, finish that file before ending the answer.", prompt)
+            self.assertIn("Do not stop mid-function, mid-list, mid-file, or mid-sentence.", prompt)
             self.assertIn("Make a concrete decision when multiple implementation paths exist", prompt)
             self.assertIn("Do not start with generic theory or motivational text.", prompt)
+            self.assertIn("do not force the whole answer into a rigid markdown document shape", prompt.casefold())
 
     def test_prepare_answer_supports_high_reasoning_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -224,14 +225,14 @@ class AnswerServiceTests(unittest.TestCase):
             knowledge = KnowledgeService(root)
             knowledge.load()
             answer = AnswerService(RetrievalService(knowledge)).prepare_answer(
-                "проаналізуй ноди по C які в нас є і що ще додати в граф",
+                "Analyze the C knowledge nodes we already have and what else to add to the graph.",
                 scope_dirs=("Languages",),
             )
             payload = serialize_answer_bundle(answer)
 
             self.assertEqual(
                 payload["question"],
-                "проаналізуй ноди по C які в нас є і що ще додати в граф",
+                "Analyze the C knowledge nodes we already have and what else to add to the graph.",
             )
             self.assertIn(
                 "Terminology clarification: in this request, nodes means knowledge-base notes",

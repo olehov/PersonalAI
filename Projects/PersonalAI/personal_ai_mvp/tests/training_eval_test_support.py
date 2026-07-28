@@ -4,8 +4,8 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
-from personal_ai.application.training_eval_service import TrainingEvalService
-from personal_ai.domain.models import (
+from application.training.eval_service import TrainingEvalService
+from domain.models import (
     PromptPatchSuggestion,
     TrainingEvaluationReport,
     TrainingExample,

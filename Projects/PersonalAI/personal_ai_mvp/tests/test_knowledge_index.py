@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from personal_ai.application.knowledge_index import KnowledgeIndex
-from personal_ai.domain.models import NoteDocument, NoteLink, NoteMetadata
+from application.knowledge.knowledge_index import KnowledgeIndex
+from domain.models import NoteDocument, NoteLink, NoteMetadata
 
 
 class KnowledgeIndexTests(unittest.TestCase):

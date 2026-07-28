@@ -4,7 +4,15 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from application.benchmark.pack_service import RepoBenchmarkTask, RepoBenchmarkTurn
+from application.benchmark.run_service import BenchmarkRunService
+from domain.models import (
+    AgentRuntimeArtifact,
+    GeneratedAnswer,
+    PromptMessage,
+)
 from tests.cli_test_support import CliTestSupport
+from tests.path_test_support import history_db_path
 
 
 class BenchmarkCliTests(CliTestSupport):
@@ -44,6 +52,51 @@ class BenchmarkCliTests(CliTestSupport):
             self.assertEqual(payload["pack_id"], "repo-aware-v1")
             self.assertEqual(len(payload["tasks"]), 1)
             self.assertEqual(payload["tasks"][0]["workflow"], "agent")
+
+    def test_benchmark_pack_outputs_multi_turn_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pack_path = self._write_benchmark_pack(
+                root,
+                tasks=[
+                    {
+                        "task_id": "continuation-bsq",
+                        "category": "multi_turn_continuation",
+                        "title": "Continue BSQ task",
+                        "objective": "Check whether the benchmark pack stores follow-up turns.",
+                        "workflow": "ask",
+                        "prompt": "Build a BSQ first pass.",
+                        "turns": [
+                            {
+                                "prompt": "Generate the initial file layout for BSQ in C.",
+                                "expected_signals": ["bsq.c"],
+                            },
+                            {
+                                "prompt": "Now continue and finish the implementation.",
+                                "anti_signals": ["restart from scratch"],
+                            },
+                        ],
+                    }
+                ],
+            )
+
+            exit_code, payload = self._run_cli_json(
+                [
+                    "--vault",
+                    str(root),
+                    "--format",
+                    "json",
+                    "benchmark-pack",
+                    "--pack-file",
+                    str(pack_path),
+                ]
+            )
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(payload["tasks"][0]["turns"]), 2)
+            self.assertEqual(
+                payload["tasks"][0]["turns"][1]["prompt"],
+                "Now continue and finish the implementation.",
+            )
 
     def test_benchmark_pack_filters_by_task_id(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -104,7 +157,7 @@ class BenchmarkCliTests(CliTestSupport):
             )
 
             with patch(
-                "personal_ai.cli.BenchmarkRunService.run_task",
+                "application.benchmark.run_service.BenchmarkRunService.run_task",
                 return_value=type(
                     "BenchmarkResult",
                     (),
@@ -145,10 +198,10 @@ class BenchmarkCliTests(CliTestSupport):
     def test_benchmark_history_reads_persisted_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            history_db = root / ".personal_ai" / "query_history.sqlite3"
+            history_db = history_db_path(root)
 
-            from personal_ai.application.benchmark_run_service import BenchmarkRunResult
-            from personal_ai.infrastructure.query_history_repository import SQLiteQueryHistoryRepository
+            from application.benchmark.run_service import BenchmarkRunResult
+            from infrastructure.history.repository import SQLiteQueryHistoryRepository
 
             repository = SQLiteQueryHistoryRepository(history_db)
             repository.save_benchmark_run_result(
@@ -202,7 +255,7 @@ class BenchmarkCliTests(CliTestSupport):
             )
 
             with patch(
-                "personal_ai.cli.BenchmarkRunService.compare_models",
+                "application.benchmark.run_service.BenchmarkRunService.compare_models",
                 return_value=type(
                     "BenchmarkCompare",
                     (),
@@ -285,7 +338,7 @@ class BenchmarkCliTests(CliTestSupport):
             )
 
             with patch(
-                "personal_ai.cli.BenchmarkRunService.compare_models",
+                "application.benchmark.run_service.BenchmarkRunService.compare_models",
                 return_value=type(
                     "BenchmarkCompare",
                     (),
@@ -311,3 +364,154 @@ class BenchmarkCliTests(CliTestSupport):
                 )
             self.assertEqual(exit_code, 0)
             self.assertEqual(payload["task_ids"], ["one", "two"])
+
+    def test_multi_turn_benchmark_run_passes_conversation_history_between_turns(self) -> None:
+        service = BenchmarkRunService(
+            chat_service=_FakeChatService(),
+            agent_runtime_service=_FakeAgentRuntimeService(),
+        )
+        task = RepoBenchmarkTask(
+            task_id="continuation-bsq",
+            category="multi_turn_continuation",
+            title="Continue BSQ task",
+            objective="Check whether follow-up prompts see prior turns.",
+            workflow="ask",
+            scope_dirs=("Projects", "Languages/C"),
+            prompt="Generate BSQ incrementally.",
+            turns=(
+                RepoBenchmarkTurn(prompt="Create the initial BSQ file tree."),
+                RepoBenchmarkTurn(prompt="Continue and finish the implementation."),
+            ),
+        )
+
+        result = service.run_task(
+            pack_id="repo-aware-v1",
+            task=task,
+            model="gpt-oss:20b",
+        )
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.result_payload["turn_count"], 2)
+        turn_results = result.result_payload["turn_results"]
+        self.assertEqual(turn_results[0]["result_payload"]["answer_text"], "draft-1")
+        self.assertEqual(turn_results[1]["result_payload"]["answer_text"], "draft-2")
+        self.assertEqual(len(service._chat_service.ask_calls), 2)  # type: ignore[attr-defined]
+        first_history = service._chat_service.ask_calls[0]["conversation_history"]  # type: ignore[attr-defined]
+        second_history = service._chat_service.ask_calls[1]["conversation_history"]  # type: ignore[attr-defined]
+        self.assertEqual(first_history, ())
+        self.assertEqual(len(second_history), 2)
+        self.assertEqual(second_history[0].role, "user")
+        self.assertEqual(second_history[0].content, "Create the initial BSQ file tree.")
+        self.assertEqual(second_history[1].role, "assistant")
+        self.assertEqual(second_history[1].content, "draft-1")
+
+    def test_multi_turn_agent_benchmark_uses_final_output_for_history(self) -> None:
+        service = BenchmarkRunService(
+            chat_service=_FakeChatService(),
+            agent_runtime_service=_FakeAgentRuntimeService(),
+        )
+        task = RepoBenchmarkTask(
+            task_id="continuation-agent",
+            category="multi_turn_continuation",
+            title="Continue agent task",
+            objective="Check whether agent final output is fed into follow-up turns.",
+            workflow="agent",
+            scope_dirs=("Projects",),
+            turns=(
+                RepoBenchmarkTurn(prompt="Inspect the repo and propose the first slice."),
+                RepoBenchmarkTurn(prompt="Continue from your previous slice and refine it."),
+            ),
+        )
+
+        result = service.run_task(
+            pack_id="repo-aware-v1",
+            task=task,
+            model="gpt-oss:20b",
+        )
+
+        self.assertEqual(result.status, "needs_execution_layer")
+        second_history = service._agent_runtime_service.calls[1]["conversation_history"]  # type: ignore[attr-defined]
+        self.assertEqual(len(second_history), 2)
+        self.assertEqual(second_history[1].content, "agent-draft-1")
+
+
+class _FakeChatService:
+    def __init__(self) -> None:
+        self.ask_calls: list[dict[str, object]] = []
+
+    def ask(
+        self,
+        question: str,
+        *,
+        model: str,
+        scope_dirs: tuple[str, ...] = (),
+        conversation_history: tuple[PromptMessage, ...] = (),
+        reasoning_mode: str = "standard",
+    ) -> GeneratedAnswer:
+        self.ask_calls.append(
+            {
+                "question": question,
+                "model": model,
+                "scope_dirs": scope_dirs,
+                "conversation_history": conversation_history,
+                "reasoning_mode": reasoning_mode,
+            }
+        )
+        return GeneratedAnswer(
+            model=model,
+            question=question,
+            answer_text=f"draft-{len(self.ask_calls)}",
+        )
+
+    def scope_implementation(
+        self,
+        question: str,
+        *,
+        model: str,
+        scope_dirs: tuple[str, ...] = (),
+        conversation_history: tuple[PromptMessage, ...] = (),
+        reasoning_mode: str = "standard",
+    ) -> GeneratedAnswer:
+        return self.ask(
+            question,
+            model=model,
+            scope_dirs=scope_dirs,
+            conversation_history=conversation_history,
+            reasoning_mode=reasoning_mode,
+        )
+
+
+class _FakeAgentRuntimeService:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def run(
+        self,
+        request_text: str,
+        *,
+        model: str,
+        scope_dirs: tuple[str, ...] = (),
+        conversation_history: tuple[PromptMessage, ...] = (),
+        reasoning_mode: str = "standard",
+        discussion_preset: str | None = None,
+    ) -> AgentRuntimeArtifact:
+        self.calls.append(
+            {
+                "request_text": request_text,
+                "model": model,
+                "scope_dirs": scope_dirs,
+                "conversation_history": conversation_history,
+                "reasoning_mode": reasoning_mode,
+                "discussion_preset": discussion_preset,
+            }
+        )
+        index = len(self.calls)
+        return AgentRuntimeArtifact(
+            model=model,
+            request_text=request_text,
+            normalized_goal=request_text,
+            task_mode="implementation",
+            status="needs_execution_layer",
+            scope_dirs=scope_dirs,
+            final_output=f"agent-draft-{index}",
+        )

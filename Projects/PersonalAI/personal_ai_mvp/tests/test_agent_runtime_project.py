@@ -9,6 +9,15 @@ from tests.agent_runtime_test_support import (
     FakeAgentHistoryRepository,
     FakeOllamaClient,
 )
+from tests.path_test_support import (
+    state_dir_name,
+    runtime_drafts_dir_name,
+    runtime_scaffold_dir_name,
+    runtime_write_probe_dir_name,
+    scaffold_path,
+    scaffold_root,
+    write_probe_root,
+)
 
 
 class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
@@ -50,6 +59,7 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
 
             self.assertEqual(payload["model"], "deepseek-r1:8b")
             self.assertEqual(payload["executor_model"], "deepseek-r1:8b")
+            self.assertEqual(payload["approver_model"], "deepseek-r1:8b")
             self.assertEqual(payload["task_mode"], "implementation")
             self.assertEqual(payload["status"], "needs_execution_layer")
             self.assertEqual(len(payload["steps"]), 4)
@@ -66,9 +76,11 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
                 payload["task_plan"]["goal"],
                 "Refined goal.",
             )
-            self.assertIsNone(payload["discussion_preset"])
-            self.assertEqual(payload["discussion_trace"]["preset"], "custom")
+            self.assertEqual(payload["discussion_preset"], "coder_critic")
+            self.assertEqual(payload["discussion_trace"]["preset"], "coder_critic")
             self.assertIn("Refined goal.", payload["discussion_trace"]["synthesis_output"])
+            self.assertEqual(payload["discussion_trace"]["approval_status"], "approved")
+            self.assertGreaterEqual(payload["discussion_trace"]["planner_rollbacks"], 0)
             self.assertEqual(payload["task_plan"]["entries"][0]["status"], "next")
             self.assertIn("Parser stub", payload["task_plan"]["entries"][0]["title"])
             self.assertIn(
@@ -107,11 +119,17 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
                 executions_by_type["inspect_target_files"]["output_text"],
             )
             self.assertEqual(executions_by_type["draft_module"]["status"], "executed")
-            self.assertIn("saved_path=.personal_ai/agent_runtime_drafts/", executions_by_type["draft_module"]["output_text"])
+            self.assertIn(
+                f"saved_path={state_dir_name()}/{runtime_drafts_dir_name()}/",
+                executions_by_type["draft_module"]["output_text"],
+            )
             self.assertIn("Target", executions_by_type["draft_module"]["output_text"])
             self.assertIn("Draft", executions_by_type["draft_module"]["output_text"])
             self.assertEqual(executions_by_type["plan_patch"]["status"], "executed")
-            self.assertIn("saved_path=.personal_ai/agent_runtime_drafts/", executions_by_type["plan_patch"]["output_text"])
+            self.assertIn(
+                f"saved_path={state_dir_name()}/{runtime_drafts_dir_name()}/",
+                executions_by_type["plan_patch"]["output_text"],
+            )
             self.assertIn("Files", executions_by_type["plan_patch"]["output_text"])
             self.assertIn("src/parser.c", executions_by_type["plan_patch"]["output_text"])
             self.assertIn("Agent Runtime Contract:", fake_client.calls[0][1][1].content)
@@ -129,6 +147,7 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             self.assertIn("Build Config:", module_draft_prompt)
             self.assertIn("Suggested Files:", module_draft_prompt)
             self.assertIn("Related Files:", module_draft_prompt)
+            self.assertIn("Edit Bundle:", module_draft_prompt)
             self.assertIn("Target File Context:", module_draft_prompt)
             self.assertIn("Validation Baseline:", module_draft_prompt)
             self.assertIn("Planner Handoff:", module_draft_prompt)
@@ -145,7 +164,10 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             self.assertIn("Build Config:", patch_plan_prompt)
             self.assertIn("Suggested Files:", patch_plan_prompt)
             self.assertIn("Related Files:", patch_plan_prompt)
+            self.assertIn("Edit Bundle:", patch_plan_prompt)
+            self.assertIn("Target File Context:", patch_plan_prompt)
             self.assertIn("Validation Baseline:", patch_plan_prompt)
+            self.assertIn("Planner Handoff:", patch_plan_prompt)
             self.assertIn("recommended_commands=make all; make clean", patch_plan_prompt)
             self.assertIn(
                 "Only safe in-process actions and whitelist validation commands were executed.",
@@ -323,7 +345,10 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
                 executions_by_type["inspect_target_files"]["output_text"],
             )
             self.assertEqual(executions_by_type["draft_module"]["status"], "executed")
-            self.assertIn("saved_path=.personal_ai/agent_runtime_drafts/", executions_by_type["draft_module"]["output_text"])
+            self.assertIn(
+                f"saved_path={state_dir_name()}/{runtime_drafts_dir_name()}/",
+                executions_by_type["draft_module"]["output_text"],
+            )
             self.assertIn("Draft", executions_by_type["draft_module"]["output_text"])
             module_draft_prompt = next(
                 messages[-1].content
@@ -331,6 +356,7 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
                 if "Module Draft Contract:" in messages[-1].content
             )
             self.assertIn("Planner Handoff:", module_draft_prompt)
+            self.assertIn("Edit Bundle:", module_draft_prompt)
             self.assertIn("Target File Context:", module_draft_prompt)
             self.assertIn("class TaskStore:", module_draft_prompt)
             self.assertIn(
@@ -400,6 +426,83 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             )
             self.assertIn("exit_code=0", executions_by_type["run_allowed_command"]["output_text"])
 
+    def test_run_prefers_existing_source_files_over_json_and_log_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = root / "Projects" / "Minishell"
+            (root / "Projects").mkdir()
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nImprove parsing in the existing project.\n",
+                encoding="utf-8",
+            )
+            (project_root / "src").mkdir(parents=True)
+            (project_root / "src" / "parsing.c").write_text(
+                "int parse_input(const char *line)\n{\n    return line != 0;\n}\n",
+                encoding="utf-8",
+            )
+            (project_root / "src" / "split.c").write_text(
+                "char **split_words(const char *line)\n{\n    (void)line;\n    return 0;\n}\n",
+                encoding="utf-8",
+            )
+            (project_root / "src" / "minishell.h").write_text(
+                "#ifndef MINISHELL_H\n#define MINISHELL_H\nint parse_input(const char *line);\n#endif\n",
+                encoding="utf-8",
+            )
+            (project_root / "deepseek-full-minishell-raw.json").write_text(
+                "{\"response\": \"artifact\"}\n",
+                encoding="utf-8",
+            )
+            (project_root / "deepseek-full-minishell-build.log").write_text(
+                "build output\n",
+                encoding="utf-8",
+            )
+            (project_root / "deepseek-parser-test-2026-06-14.md").write_text(
+                "# Deepseek Parser Test\nSynthetic runtime note artifact.\n",
+                encoding="utf-8",
+            )
+
+            fake_client, service = self._build_service(root)
+            payload = self._run_payload(
+                service,
+                "Inspect Projects/Minishell and improve the parser implementation in the existing files.",
+                model="gemma:latest",
+                scope_dirs=("Projects",),
+            )
+            executions_by_type = self._executions_by_type(payload)
+            target_output = executions_by_type["inspect_target_files"]["output_text"]
+            module_draft_prompt = next(
+                messages[-1].content
+                for _, messages, _ in fake_client.calls
+                if "Module Draft Contract:" in messages[-1].content
+            )
+
+            self.assertIn("path=Projects/Minishell/src/parsing.c", target_output)
+            self.assertTrue(
+                "path=Projects/Minishell/src/split.c" in target_output
+                or "path=Projects/Minishell/src/minishell.h" in target_output
+            )
+            self.assertNotIn("deepseek-full-minishell-raw.json", target_output)
+            self.assertNotIn("deepseek-full-minishell-build.log", target_output)
+            self.assertNotIn("deepseek-parser-test-2026-06-14.md", target_output)
+            self.assertIn("Edit Bundle:", module_draft_prompt)
+            self.assertIn("int parse_input(const char *line)", module_draft_prompt)
+            self.assertTrue(
+                "split_words" in module_draft_prompt
+                or "int parse_input(const char *line)" in module_draft_prompt
+            )
+            patch_plan_prompt = next(
+                messages[-1].content
+                for _, messages, _ in fake_client.calls
+                if "Patch Planning Contract:" in messages[-1].content
+            )
+            self.assertIn("Target File Context:", patch_plan_prompt)
+            self.assertIn("Planner Handoff:", patch_plan_prompt)
+            self.assertIn("Projects/Minishell/src/parsing.c", patch_plan_prompt)
+            self.assertTrue(
+                "Projects/Minishell/src/split.c" in patch_plan_prompt
+                or "Projects/Minishell/src/minishell.h" in patch_plan_prompt
+            )
+
     def test_run_can_create_safe_repo_directory_and_file_for_write_probe(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -428,14 +531,14 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             self.assertEqual(executions_by_type["create_dir"]["status"], "executed")
             self.assertEqual(executions_by_type["create_file"]["status"], "executed")
             self.assertIn(
-                "created_dir=runtime_write_probe",
+                f"created_dir={runtime_write_probe_dir_name()}",
                 executions_by_type["create_dir"]["output_text"],
             )
             self.assertIn(
-                "created_file=runtime_write_probe/WRITE_PROBE.md",
+                f"created_file={runtime_write_probe_dir_name()}/WRITE_PROBE.md",
                 executions_by_type["create_file"]["output_text"],
             )
-            created_dir = project_root / "runtime_write_probe"
+            created_dir = write_probe_root(project_root)
             created_file = created_dir / "WRITE_PROBE.md"
             self.assertTrue(created_dir.is_dir())
             self.assertTrue(created_file.is_file())
@@ -477,13 +580,13 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
 
             self.assertIn("create_scaffold_tree", executions_by_type)
             self.assertEqual(executions_by_type["create_scaffold_tree"]["status"], "executed")
-            created_file = project_root / "runtime_scaffold" / "src" / "helpers.py"
+            created_file = scaffold_root(project_root) / "src" / "helpers.py"
             self.assertTrue(created_file.is_file())
             content = created_file.read_text(encoding="utf-8")
             self.assertIn("def normalize_text", content)
             self.assertNotIn("```", content)
             self.assertNotIn("import unittest", content)
-            self.assertNotIn("from personal_ai.cli import main", content)
+            self.assertNotIn("from cli_app.entry import main", content)
             self.assertIn(
                 "created_file_count=1",
                 executions_by_type["create_scaffold_tree"]["output_text"],
@@ -548,7 +651,7 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             executions_by_type = self._executions_by_type(payload)
 
             self.assertEqual(executions_by_type["create_scaffold_tree"]["status"], "executed")
-            created_file = project_root / "runtime_scaffold" / "src" / "helpers.py"
+            created_file = scaffold_root(project_root) / "src" / "helpers.py"
             self.assertTrue(created_file.is_file())
             content = created_file.read_text(encoding="utf-8")
             self.assertIn("def normalize_text", content)
@@ -577,15 +680,15 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
 
             self.assertIn("create_scaffold_tree", executions_by_type)
             self.assertEqual(executions_by_type["create_scaffold_tree"]["status"], "executed")
-            scaffold_root = project_root / "runtime_scaffold"
-            self.assertTrue((scaffold_root / "include").is_dir())
-            self.assertTrue((scaffold_root / "src" / "parser").is_dir())
-            self.assertTrue((scaffold_root / "src" / "executor").is_dir())
-            self.assertTrue((scaffold_root / "src" / "builtins").is_dir())
-            self.assertTrue((scaffold_root / "Makefile").is_file())
-            self.assertTrue((scaffold_root / "include" / "minishell.h").is_file())
-            self.assertTrue((scaffold_root / "src" / "main.c").is_file())
-            self.assertTrue((scaffold_root / "src" / "parser" / "parser.c").is_file())
+            scaffold_root_path = scaffold_root(project_root)
+            self.assertTrue((scaffold_root_path / "include").is_dir())
+            self.assertTrue((scaffold_root_path / "src" / "parser").is_dir())
+            self.assertTrue((scaffold_root_path / "src" / "executor").is_dir())
+            self.assertTrue((scaffold_root_path / "src" / "builtins").is_dir())
+            self.assertTrue((scaffold_root_path / "Makefile").is_file())
+            self.assertTrue((scaffold_root_path / "include" / "minishell.h").is_file())
+            self.assertTrue((scaffold_root_path / "src" / "main.c").is_file())
+            self.assertTrue((scaffold_root_path / "src" / "parser" / "parser.c").is_file())
             self.assertIn(
                 "created_dir_count=6",
                 executions_by_type["create_scaffold_tree"]["output_text"],
@@ -595,7 +698,7 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
                 executions_by_type["create_scaffold_tree"]["output_text"],
             )
             self.assertIn(
-                "runtime_scaffold/src/parser/parser.c",
+                scaffold_path("src", "parser", "parser.c"),
                 executions_by_type["create_scaffold_tree"]["output_text"],
             )
             self.assertTrue(
@@ -605,11 +708,11 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
                 messages[-1].content
                 for _, messages, _ in fake_client.calls
                 if "Scaffold File Contract:" in messages[-1].content
-                and "Target Path: runtime_scaffold/src/parser/parser.c" in messages[-1].content
+                and f"Target Path: {scaffold_path('src', 'parser', 'parser.c')}" in messages[-1].content
             )
             self.assertIn("Scaffold Context:", file_prompt)
             self.assertIn("target_group=parser", file_prompt)
-            self.assertIn("declared_headers=runtime_scaffold/include/minishell.h", file_prompt)
+            self.assertIn(f"declared_headers={scaffold_path('include', 'minishell.h')}", file_prompt)
 
     def test_run_repairs_scaffold_file_with_missing_internal_include(self) -> None:
         class BrokenIncludeTreeClient(FakeOllamaClient):
@@ -622,11 +725,13 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             ) -> str:
                 user_prompt = messages[-1].content
                 if "Scaffold Tree Contract:" in user_prompt:
+                    parser_dir = scaffold_path("src", "parser")
+                    parser_c = scaffold_path("src", "parser", "parser.c")
                     return (
                         '{'
-                        '"dirs":["runtime_scaffold","runtime_scaffold/src/parser"],'
+                        f'"dirs":["{runtime_scaffold_dir_name()}","{parser_dir}"],'
                         '"files":['
-                        '{"path":"runtime_scaffold/src/parser/parser.c","purpose":"Parser implementation scaffold."}'
+                        f'{{"path":"{parser_c}","purpose":"Parser implementation scaffold."}}'
                         "]}"
                     )
                 if "Scaffold File Contract:" in user_prompt and "parser.c" in user_prompt:
@@ -666,10 +771,10 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
 
             self.assertEqual(executions_by_type["create_scaffold_tree"]["status"], "executed")
             self.assertIn(
-                "repaired:runtime_scaffold/src/parser/parser.c:fallback",
+                f"repaired:{scaffold_path('src', 'parser', 'parser.c')}:fallback",
                 executions_by_type["create_scaffold_tree"]["output_text"],
             )
-            content = (project_root / "runtime_scaffold" / "src" / "parser" / "parser.c").read_text(
+            content = (scaffold_root(project_root) / "src" / "parser" / "parser.c").read_text(
                 encoding="utf-8"
             )
             self.assertNotIn('#include "proto.h"', content)
@@ -720,8 +825,8 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             executions_by_type = self._executions_by_type(payload)
 
             self.assertEqual(executions_by_type["create_scaffold_tree"]["status"], "executed")
-            self.assertTrue((project_root / "runtime_scaffold" / "src").is_dir())
-            self.assertTrue((project_root / "runtime_scaffold" / "src" / "main.txt").is_file())
+            self.assertTrue((scaffold_root(project_root) / "src").is_dir())
+            self.assertTrue((scaffold_root(project_root) / "src" / "main.txt").is_file())
             self.assertFalse((project_root / "src").exists())
             self.assertFalse((project_root / "include").exists())
 
@@ -758,6 +863,7 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             "PERSONAL_AI_AGENT_PLANNER_MODEL": os.environ.get("PERSONAL_AI_AGENT_PLANNER_MODEL"),
             "PERSONAL_AI_AGENT_CRITIC_MODEL": os.environ.get("PERSONAL_AI_AGENT_CRITIC_MODEL"),
             "PERSONAL_AI_AGENT_SYNTHESIS_MODEL": os.environ.get("PERSONAL_AI_AGENT_SYNTHESIS_MODEL"),
+            "PERSONAL_AI_AGENT_APPROVER_MODEL": os.environ.get("PERSONAL_AI_AGENT_APPROVER_MODEL"),
         }
         os.environ["PERSONAL_AI_AGENT_MULTI_MODEL_DISCUSSION"] = "true"
         os.environ["PERSONAL_AI_AGENT_PLANNER_MODEL"] = "gemma:latest"
@@ -785,15 +891,19 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
                 self.assertEqual(payload["model"], "gemma:latest")
                 self.assertEqual(payload["critic_model"], "qwen2.5-coder:7b")
                 self.assertEqual(payload["synthesis_model"], "deepseek-r1:8b")
+                self.assertEqual(payload["approver_model"], "deepseek-r1:8b")
                 self.assertEqual(payload["overview"]["planner_model"], "gemma:latest")
                 self.assertEqual(payload["overview"]["critic_model"], "qwen2.5-coder:7b")
                 self.assertEqual(payload["overview"]["synthesis_model"], "deepseek-r1:8b")
+                self.assertEqual(payload["overview"]["approver_model"], "deepseek-r1:8b")
                 self.assertGreaterEqual(len(fake_client.calls), 3)
                 self.assertEqual(fake_client.calls[0][0], "gemma:latest")
                 self.assertEqual(fake_client.calls[1][0], "qwen2.5-coder:7b")
                 self.assertEqual(fake_client.calls[2][0], "deepseek-r1:8b")
                 self.assertIn("Recursive Planning Critique:", fake_client.calls[1][1][-1].content)
                 self.assertIn("Recursive Planning Final Pass:", fake_client.calls[2][1][-1].content)
+                self.assertEqual(payload["discussion_preset"], "custom")
+                self.assertEqual(payload["discussion_trace"]["preset"], "custom")
         finally:
             for key, value in previous_values.items():
                 if value is None:
@@ -823,6 +933,7 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
             "PERSONAL_AI_AGENT_PLANNER_MODEL": os.environ.get("PERSONAL_AI_AGENT_PLANNER_MODEL"),
             "PERSONAL_AI_AGENT_CRITIC_MODEL": os.environ.get("PERSONAL_AI_AGENT_CRITIC_MODEL"),
             "PERSONAL_AI_AGENT_SYNTHESIS_MODEL": os.environ.get("PERSONAL_AI_AGENT_SYNTHESIS_MODEL"),
+            "PERSONAL_AI_AGENT_APPROVER_MODEL": os.environ.get("PERSONAL_AI_AGENT_APPROVER_MODEL"),
         }
         os.environ["PERSONAL_AI_AGENT_MULTI_MODEL_DISCUSSION"] = "true"
         os.environ["PERSONAL_AI_AGENT_PLANNER_MODEL"] = "gemma:latest"
@@ -853,9 +964,127 @@ class AgentRuntimeProjectTests(AgentRuntimeServiceTestSupport):
 
                 self.assertEqual(payload["status"], "needs_execution_layer")
                 self.assertTrue(payload["steps"][1]["output_text"])
+                self.assertEqual(
+                    payload["discussion_trace"]["fallback_used"],
+                    "self_refinement_after_synthesis_failure",
+                )
+                self.assertEqual(payload["discussion_trace"]["approval_status"], "approved")
+                self.assertIn("APPROVED", payload["discussion_trace"]["approver_feedback"])
+                self.assertIn("Refined goal.", payload["discussion_trace"]["synthesis_output"])
         finally:
             for key, value in previous_values.items():
                 if value is None:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+    def test_run_uses_bounded_executor_discussion_loop_for_draft_and_patch_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nImplement parser and executor.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell").mkdir()
+            (root / "Projects" / "Minishell" / "src").mkdir()
+            (root / "Projects" / "Minishell" / "include").mkdir()
+            (root / "Projects" / "Minishell" / "src" / "main.c").write_text(
+                "int main(void) { return 0; }\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell" / "include" / "minishell.h").write_text(
+                "#ifndef MINISHELL_H\n#define MINISHELL_H\n#endif\n",
+                encoding="utf-8",
+            )
+
+            fake_client, service = self._build_service(root)
+            self._run_payload(
+                service,
+                "Your task is to build the mandatory part of 42 minishell.",
+                model="deepseek-r1:8b",
+                scope_dirs=("Projects",),
+            )
+
+            critique_calls = [
+                call for call in fake_client.calls
+                if "Executor Artifact Critique:" in call[1][-1].content
+            ]
+            refinement_calls = [
+                call for call in fake_client.calls
+                if "Executor Artifact Final Pass:" in call[1][-1].content
+            ]
+            approval_calls = [
+                call for call in fake_client.calls
+                if "Executor Approval Review:" in call[1][-1].content
+            ]
+
+            self.assertGreaterEqual(len(critique_calls), 4)
+            self.assertGreaterEqual(len(refinement_calls), 4)
+            self.assertGreaterEqual(len(approval_calls), 2)
+            self.assertEqual(critique_calls[0][0], "gemma:latest")
+            self.assertEqual(refinement_calls[0][0], "deepseek-r1:8b")
+            self.assertEqual(approval_calls[0][0], "deepseek-r1:8b")
+
+    def test_run_returns_to_executor_stage_when_approver_requests_revision(self) -> None:
+        class ExecutorRollbackClient(FakeOllamaClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self._approval_calls = 0
+
+            def chat_with_options(
+                self,
+                *,
+                model: str,
+                messages,
+                options=None,
+            ) -> str:
+                user_prompt = messages[-1].content
+                if "Executor Approval Review:" in user_prompt:
+                    self._approval_calls += 1
+                    if self._approval_calls == 1:
+                        return "NEEDS_REVISION\n- tighten the artifact and make the target files explicit"
+                    return "APPROVED\n- artifact is concrete enough"
+                return super().chat_with_options(
+                    model=model,
+                    messages=messages,
+                    options=options,
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nImplement parser and executor.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell").mkdir()
+            (root / "Projects" / "Minishell" / "src").mkdir()
+            (root / "Projects" / "Minishell" / "include").mkdir()
+            (root / "Projects" / "Minishell" / "src" / "main.c").write_text(
+                "int main(void) { return 0; }\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell" / "include" / "minishell.h").write_text(
+                "#ifndef MINISHELL_H\n#define MINISHELL_H\n#endif\n",
+                encoding="utf-8",
+            )
+
+            fake_client, service = self._build_service(
+                root,
+                fake_client=ExecutorRollbackClient(),
+            )
+            self._run_payload(
+                service,
+                "Your task is to build the mandatory part of 42 minishell.",
+                model="deepseek-r1:8b",
+                scope_dirs=("Projects",),
+            )
+
+            refinement_calls = [
+                call for call in fake_client.calls
+                if "Executor Artifact Final Pass:" in call[1][-1].content
+            ]
+
+            self.assertGreaterEqual(fake_client._approval_calls, 2)
+            self.assertGreaterEqual(len(refinement_calls), 5)

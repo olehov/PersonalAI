@@ -3,8 +3,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from personal_ai.application.knowledge_service import serialize_generated_note_draft
-from personal_ai.application.maintenance_service import KnowledgeMaintenanceService
+from application.shared.serializers import serialize_generated_note_draft
+from application.notes.maintenance_service import KnowledgeMaintenanceService
 from tests.note_draft_test_support import NoteDraftServiceTestSupport
 
 

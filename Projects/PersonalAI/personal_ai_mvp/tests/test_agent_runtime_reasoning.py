@@ -4,8 +4,8 @@ import os
 import tempfile
 from pathlib import Path
 
-from personal_ai.domain.models import PromptMessage
-from tests.agent_runtime_test_support import AgentRuntimeServiceTestSupport
+from domain.models import PromptMessage
+from tests.agent_runtime_test_support import AgentRuntimeServiceTestSupport, FakeOllamaClient
 
 
 class AgentRuntimeReasoningTests(AgentRuntimeServiceTestSupport):
@@ -27,9 +27,11 @@ class AgentRuntimeReasoningTests(AgentRuntimeServiceTestSupport):
 
             previous_planner = os.environ.get("PERSONAL_AI_AGENT_PLANNER_MODEL")
             previous_executor = os.environ.get("PERSONAL_AI_AGENT_EXECUTOR_MODEL")
+            previous_approver = os.environ.get("PERSONAL_AI_AGENT_APPROVER_MODEL")
             try:
                 os.environ["PERSONAL_AI_AGENT_PLANNER_MODEL"] = "deepseek-r1:8b"
                 os.environ["PERSONAL_AI_AGENT_EXECUTOR_MODEL"] = "qwen2.5-coder:7b"
+                os.environ.pop("PERSONAL_AI_AGENT_APPROVER_MODEL", None)
 
                 fake_client, service = self._build_service(
                     root,
@@ -45,8 +47,9 @@ class AgentRuntimeReasoningTests(AgentRuntimeServiceTestSupport):
 
                 self.assertEqual(payload["model"], "deepseek-r1:8b")
                 self.assertEqual(payload["executor_model"], "qwen2.5-coder:7b")
+                self.assertEqual(payload["approver_model"], "deepseek-r1:8b")
                 self.assertEqual(fake_client.calls[0][0], "deepseek-r1:8b")
-                self.assertEqual(fake_client.calls[1][0], "deepseek-r1:8b")
+                self.assertEqual(fake_client.calls[1][0], "qwen2.5-coder:7b")
                 self.assertEqual(fake_client.calls[2][0], "deepseek-r1:8b")
                 module_draft_call = next(
                     model_name
@@ -69,6 +72,10 @@ class AgentRuntimeReasoningTests(AgentRuntimeServiceTestSupport):
                     os.environ.pop("PERSONAL_AI_AGENT_EXECUTOR_MODEL", None)
                 else:
                     os.environ["PERSONAL_AI_AGENT_EXECUTOR_MODEL"] = previous_executor
+                if previous_approver is None:
+                    os.environ.pop("PERSONAL_AI_AGENT_APPROVER_MODEL", None)
+                else:
+                    os.environ["PERSONAL_AI_AGENT_APPROVER_MODEL"] = previous_approver
 
     def test_run_includes_recent_conversation_history_in_planning_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -122,6 +129,9 @@ class AgentRuntimeReasoningTests(AgentRuntimeServiceTestSupport):
             self.assertIn("Reasoning Mode:\nhigh", fake_client.calls[0][1][-1].content)
             self.assertIn("Recursive Planning Critique:", fake_client.calls[1][1][-1].content)
             self.assertIn("Recursive Planning Final Pass:", fake_client.calls[2][1][-1].content)
+            self.assertTrue(
+                any("Planning Approval Review:" in messages[-1].content for _, messages, _ in fake_client.calls)
+            )
 
     def test_run_uses_refined_planning_output_for_high_reasoning_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -145,6 +155,69 @@ class AgentRuntimeReasoningTests(AgentRuntimeServiceTestSupport):
             )
 
             self.assertIn("Refined goal.", artifact.final_output)
+            self.assertEqual(artifact.discussion_preset, "heavy_synthesis")
+            self.assertIsNotNone(artifact.discussion_trace)
+            self.assertEqual(artifact.discussion_trace.preset, "heavy_synthesis")
+            self.assertEqual(artifact.approver_model, "deepseek-r1:8b")
+            self.assertEqual(artifact.discussion_trace.approval_status, "approved")
+            self.assertGreaterEqual(artifact.discussion_trace.planner_rollbacks, 0)
+
+    def test_run_forces_single_model_discussion_for_resource_heavy_gpt_oss_models(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nImplement parser and executor.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell").mkdir()
+
+            fake_client, service = self._build_service(
+                root,
+                recursive_refinement_enabled=True,
+            )
+
+            artifact = service.run(
+                "Build the mandatory part of minishell.",
+                model="gpt-oss:20b",
+                reasoning_mode="high",
+                discussion_preset="heavy_synthesis",
+            )
+
+            self.assertEqual(artifact.model, "gpt-oss:20b")
+            self.assertEqual(artifact.discussion_preset, "resource_safe_single_model")
+            self.assertEqual(artifact.approver_model, "gpt-oss:20b")
+            self.assertIsNotNone(artifact.discussion_trace)
+            self.assertEqual(fake_client.calls[0][0], "gpt-oss:20b")
+            self.assertEqual(fake_client.calls[1][0], "gpt-oss:20b")
+            self.assertEqual(fake_client.calls[2][0], "gpt-oss:20b")
+
+    def test_run_uses_coder_critic_as_default_discussion_preset_for_standard_agent_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nImplement parser and executor.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell").mkdir()
+
+            fake_client, service = self._build_service(root)
+
+            artifact = service.run(
+                "Build the mandatory part of minishell.",
+                model="gemma:latest",
+                reasoning_mode="standard",
+            )
+
+            self.assertEqual(artifact.discussion_preset, "coder_critic")
+            self.assertIsNotNone(artifact.discussion_trace)
+            self.assertEqual(artifact.discussion_trace.preset, "coder_critic")
+            self.assertEqual(fake_client.calls[0][0], "gemma:latest")
+            self.assertEqual(fake_client.calls[1][0], "gemma:latest")
+            self.assertEqual(fake_client.calls[2][0], "deepseek-r1:8b")
+            self.assertEqual(artifact.approver_model, "deepseek-r1:8b")
+            self.assertEqual(artifact.discussion_trace.approval_status, "approved")
 
     def test_run_high_reasoning_does_not_recurse_when_flag_is_disabled(self) -> None:
         previous_discussion = os.environ.get("PERSONAL_AI_AGENT_MULTI_MODEL_DISCUSSION")
@@ -256,5 +329,80 @@ class AgentRuntimeReasoningTests(AgentRuntimeServiceTestSupport):
                 )
             )
             self.assertEqual(fake_client.calls[0][2], {"num_predict": 520})
-            self.assertEqual(fake_client.calls[1][2], {"num_predict": 180})
+            self.assertEqual(fake_client.calls[1][2], {"num_predict": 260})
             self.assertEqual(fake_client.calls[2][2], {"num_predict": 520})
+
+    def test_run_uses_tighter_generation_caps_for_gpt_oss_models(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nImplement parser and executor.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell").mkdir()
+
+            fake_client, service = self._build_service(
+                root,
+                recursive_refinement_enabled=True,
+            )
+
+            service.run(
+                "Build the mandatory part of minishell.",
+                model="gpt-oss:20b",
+                reasoning_mode="high",
+            )
+
+            self.assertEqual(fake_client.calls[0][2], {"num_predict": 220})
+            self.assertEqual(fake_client.calls[1][2], {"num_predict": 120})
+            self.assertEqual(fake_client.calls[2][2], {"num_predict": 220})
+
+    def test_run_returns_to_planner_stage_when_approver_requests_revision(self) -> None:
+        class PlannerRollbackClient(FakeOllamaClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self._approval_calls = 0
+
+            def chat_with_options(
+                self,
+                *,
+                model: str,
+                messages,
+                options=None,
+            ) -> str:
+                user_prompt = messages[-1].content
+                if "Planning Approval Review:" in user_prompt:
+                    self._approval_calls += 1
+                    if self._approval_calls == 1:
+                        return "NEEDS_REVISION\n- the first actions are still too vague"
+                    return "APPROVED\n- grounded enough for handoff"
+                return super().chat_with_options(
+                    model=model,
+                    messages=messages,
+                    options=options,
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nImplement parser and executor.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell").mkdir()
+
+            _fake_client, service = self._build_service(
+                root,
+                fake_client=PlannerRollbackClient(),
+            )
+
+            artifact = service.run(
+                "Build the mandatory part of minishell.",
+                model="gemma:latest",
+                reasoning_mode="high",
+            )
+
+            self.assertIsNotNone(artifact.discussion_trace)
+            self.assertEqual(artifact.discussion_trace.approval_status, "approved")
+            self.assertGreaterEqual(artifact.discussion_trace.planner_rollbacks, 1)
+            self.assertGreaterEqual(artifact.discussion_trace.planner_revisions, 1)
