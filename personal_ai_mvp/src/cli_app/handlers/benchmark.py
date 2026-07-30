@@ -13,11 +13,27 @@ from cli_app.renderers import (
 from cli_app.runtime import CliRuntime
 
 
+def _filter_pack_tasks(pack, *, task_id: str | None = None, category: str | None = None):
+    tasks = pack.tasks
+    if task_id:
+        tasks = tuple(item for item in tasks if item.task_id == task_id)
+    if category:
+        tasks = tuple(item for item in tasks if item.category == category)
+    return tasks
+
+
 def handle_benchmark_command(args: argparse.Namespace, runtime: CliRuntime) -> int | None:
     """Handle benchmark pack/run/history/compare commands."""
     if args.command == "benchmark-pack":
         pack = runtime.benchmark_pack_service.load_pack(args.pack_file)
-        print(_render_benchmark_pack(pack, args.format, task_id=args.task_id))
+        print(
+            _render_benchmark_pack(
+                pack,
+                args.format,
+                task_id=args.task_id,
+                category=getattr(args, "category", None),
+            )
+        )
         return 0
     if args.command == "benchmark-run":
         pack = runtime.benchmark_pack_service.load_pack(args.pack_file)
@@ -38,13 +54,22 @@ def handle_benchmark_command(args: argparse.Namespace, runtime: CliRuntime) -> i
         return 0
     if args.command == "benchmark-compare":
         pack = runtime.benchmark_pack_service.load_pack(args.pack_file)
-        if args.task_id:
-            tasks = tuple(item for item in pack.tasks if item.task_id == args.task_id)
-            if not tasks:
-                print(f"Benchmark task not found: {args.task_id}")
-                return 1
-        else:
+        task_id = getattr(args, "task_id", None)
+        category = getattr(args, "category", None)
+        if not task_id and not category:
             tasks = pack.tasks
+        else:
+            tasks = _filter_pack_tasks(
+                pack,
+                task_id=task_id,
+                category=category,
+            )
+            if task_id and not tasks:
+                print(f"Benchmark task not found: {task_id}")
+                return 1
+            if category and not tasks:
+                print(f"Benchmark category not found: {category}")
+                return 1
         comparison = runtime.benchmark_run_service.compare_models(
             pack_id=pack.pack_id,
             tasks=tasks,

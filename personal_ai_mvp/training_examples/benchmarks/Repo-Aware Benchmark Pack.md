@@ -14,6 +14,7 @@ This directory holds repeatable benchmark tasks for PersonalAI's repo-aware codi
 Current pack:
 
 - `repo_aware_pack.json`
+- `multi_turn_coding_pack.json`
 - `simple_project_pack.json`
 - `c_note_gap_pack.json`
 
@@ -36,8 +37,11 @@ Suggested usage:
    `cmd /c "set PYTHONPATH=src&& python -m cli --vault H:\KnowledgeBase\KnowledgeBase benchmark-pack"`
 2. Filter to one task:
    `cmd /c "set PYTHONPATH=src&& python -m cli --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-pack --task-id execution-honesty-minishell-build"`
-3. Run the selected task manually through the matching workflow in the UI or CLI.
-4. Save the resulting agent artifact or answer output for model comparison.
+3. Filter to just continuation regressions:
+   `cmd /c "set PYTHONPATH=src&& python -m cli --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-pack --pack-file training_examples\benchmarks\multi_turn_coding_pack.json --category multi_turn_continuation"`
+4. Compare only continuation tasks across models:
+   `cmd /c "set PYTHONPATH=src&& python -m cli --vault H:\KnowledgeBase\KnowledgeBase --format json benchmark-compare --pack-file training_examples\benchmarks\multi_turn_coding_pack.json --category multi_turn_continuation --model gpt-oss:20b --model qwen2.5-coder:7b"`
+5. Save the resulting agent artifact or answer output for model comparison.
 
 Multi-turn tasks:
 

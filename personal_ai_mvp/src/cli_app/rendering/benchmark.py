@@ -8,11 +8,21 @@ from application.benchmark.pack_service import BenchmarkPackService
 from application.shared.serializers import serialize_benchmark_run_history_entry
 
 
-def render_benchmark_pack(pack, output_format: str, *, task_id: str | None) -> str:
+def render_benchmark_pack(
+    pack,
+    output_format: str,
+    *,
+    task_id: str | None,
+    category: str | None = None,
+) -> str:
     payload = BenchmarkPackService().serialize_pack(pack)
     if task_id:
         payload["tasks"] = [
             task for task in payload["tasks"] if task["task_id"] == task_id
+        ]
+    if category:
+        payload["tasks"] = [
+            task for task in payload["tasks"] if task["category"] == category
         ]
     if output_format == "json":
         return json.dumps(payload, indent=2)
@@ -22,8 +32,10 @@ def render_benchmark_pack(pack, output_format: str, *, task_id: str | None) -> s
         f"title: {payload['title']}",
         f"description: {payload['description']}",
         f"task_count: {len(payload['tasks'])}",
-        "tasks:",
     ]
+    if category:
+        lines.append(f"category_filter: {category}")
+    lines.append("tasks:")
     for task in payload["tasks"]:
         lines.append(
             f"- {task['task_id']} | {task['category']} | {task['workflow']} | {task['title']}"

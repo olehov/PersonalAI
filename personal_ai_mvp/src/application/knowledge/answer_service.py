@@ -40,18 +40,28 @@ class AnswerService:
         related_limit: int = 5,
         scope_dirs: tuple[str, ...] = (),
         reasoning_mode: str = "standard",
+        task_mode_override: str | None = None,
+        retrieval_task_mode_override: str | None = None,
     ) -> AnswerBundle:
         """Builds a grounded answer payload for a user question."""
         normalized_question = normalize_knowledge_query(question)
-        task_mode = self._detect_task_mode(normalized_question)
-        effective_primary_limit = primary_limit + 1 if task_mode == "implementation" else primary_limit
-        effective_related_limit = max(related_limit - 1, 3) if task_mode == "implementation" else related_limit
+        task_mode = task_mode_override or self._detect_task_mode(normalized_question)
+        retrieval_task_mode = retrieval_task_mode_override or task_mode
+        if retrieval_task_mode == "implementation":
+            effective_primary_limit = primary_limit + 1
+            effective_related_limit = max(related_limit - 1, 3)
+        elif retrieval_task_mode in {"coding", "agent", "note_draft"}:
+            effective_primary_limit = primary_limit + 1
+            effective_related_limit = related_limit
+        else:
+            effective_primary_limit = primary_limit
+            effective_related_limit = related_limit
         retrieval = self._retrieval_service.build_context(
             normalized_question,
             primary_limit=effective_primary_limit,
             related_limit=effective_related_limit,
             scope_dirs=scope_dirs,
-            task_mode=task_mode,
+            task_mode=retrieval_task_mode,
         )
         filtered_retrieval = RetrievalBundle(
             question=normalized_question,

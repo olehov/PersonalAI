@@ -64,6 +64,27 @@ def build_user_prompt(retrieval: RetrievalBundle, task_mode: str, reasoning_mode
                 "- Pull forward failure modes, invariants, and validation logic that would matter in real code.",
             )
         )
+    if task_mode == "coding":
+        instructions.extend(
+            (
+                "- This request is in coding mode: prefer concrete implementation details over product or roadmap context.",
+                "- Lead with code-facing structure, APIs, algorithms, or debugging logic before broad explanation.",
+            )
+        )
+    if task_mode == "agent":
+        instructions.extend(
+            (
+                "- This request is in agent planning mode: prioritize repository-local implementation notes, concrete files, and reviewable execution slices.",
+                "- Keep project meta notes secondary unless they directly constrain the requested engineering task.",
+            )
+        )
+    if task_mode == "note_draft":
+        instructions.extend(
+            (
+                "- This request is in note-draft grounding mode: prefer authoritative technical reference notes over product planning notes.",
+                "- Pull in only the context that helps write or update the target knowledge note accurately.",
+            )
+        )
     if task_mode == "implementation":
         instructions.extend(
             (

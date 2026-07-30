@@ -26,6 +26,10 @@ def add_benchmark_parsers(
         "--task-id",
         help="Optional benchmark task id filter.",
     )
+    benchmark_pack_parser.add_argument(
+        "--category",
+        help="Optional benchmark category filter.",
+    )
 
     benchmark_run_parser = subparsers.add_parser(
         "benchmark-run",
@@ -72,6 +76,10 @@ def add_benchmark_parsers(
     benchmark_compare_parser.add_argument(
         "--task-id",
         help="Optional single benchmark task id to compare. Omit to compare the whole pack.",
+    )
+    benchmark_compare_parser.add_argument(
+        "--category",
+        help="Optional benchmark category filter. Omit to compare every category in the pack.",
     )
     benchmark_compare_parser.add_argument(
         "--model",

@@ -333,6 +333,28 @@ class ChatServiceTests(unittest.TestCase):
             self.assertIn("do not force the whole answer into a rigid markdown document shape", fake_client.calls[0][1][1].content.casefold())
             self.assertEqual(fake_client.calls[0][2], {"num_predict": 1600})
 
+    def test_ask_for_code_facing_question_uses_coding_mode_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Shell.md").write_text(
+                "# Shell\nParser and executor design notes.\n",
+                encoding="utf-8",
+            )
+
+            knowledge = KnowledgeService(root)
+            knowledge.load()
+            fake_client = FakeOllamaClient()
+            service = ChatService(
+                AnswerService(RetrievalService(knowledge)),
+                fake_client,
+                recursive_refinement_enabled=False,
+            )
+
+            service.ask("explain parser cleanup flow in minishell C", model="llama3:latest")
+
+            self.assertIn("Task Mode:\ncoding", fake_client.calls[0][1][1].content)
+            self.assertIn("This request is in coding mode", fake_client.calls[0][1][1].content)
+
     def test_ask_persists_history_when_repository_is_configured(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

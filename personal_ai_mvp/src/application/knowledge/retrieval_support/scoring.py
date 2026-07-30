@@ -160,6 +160,8 @@ def meta_penalty(path: Path, profile: dict[str, object], reasons: list[str]) -> 
     if not profile["technical"]:
         return 0
 
+    task_mode = str(profile["task_mode"])
+
     if is_bridge_note(path) and profile["cross_domain"]:
         return 0
 
@@ -194,6 +196,36 @@ def meta_penalty(path: Path, profile: dict[str, object], reasons: list[str]) -> 
             "mvp.md",
         }:
             penalty += 8
+    if task_mode == "coding":
+        if lower_parts[-1] in {
+            "project index.md",
+            "readme.md",
+            "roadmap.md",
+            "vision.md",
+            "technology stack.md",
+            "mvp.md",
+        }:
+            penalty += 6
+    if task_mode == "agent":
+        if lower_parts[-1] in {
+            "project index.md",
+            "readme.md",
+            "roadmap.md",
+            "vision.md",
+            "technology stack.md",
+            "mvp.md",
+        }:
+            penalty += 4
+    if task_mode == "note_draft":
+        if lower_parts[-1] in {
+            "project index.md",
+            "readme.md",
+            "roadmap.md",
+            "vision.md",
+            "technology stack.md",
+            "mvp.md",
+        }:
+            penalty += 10
     if profile["strict_meta_filtering"]:
         if lower_parts[-1] in {
             "project index.md",
@@ -226,6 +258,12 @@ def self_project_penalty(path: Path, profile: dict[str, object], reasons: list[s
     penalty = 16
     if profile["task_mode"] == "implementation":
         penalty += 20
+    elif profile["task_mode"] == "coding":
+        penalty += 10
+    elif profile["task_mode"] == "agent":
+        penalty += 8
+    elif profile["task_mode"] == "note_draft":
+        penalty += 6
     if profile["focused_coding"]:
         penalty += 10
 

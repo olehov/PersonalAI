@@ -138,6 +138,46 @@ class BenchmarkCliTests(CliTestSupport):
             self.assertEqual(len(payload["tasks"]), 1)
             self.assertEqual(payload["tasks"][0]["task_id"], "two")
 
+    def test_benchmark_pack_filters_by_category(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pack_path = self._write_benchmark_pack(
+                root,
+                tasks=[
+                    {
+                        "task_id": "one",
+                        "category": "multi_turn_continuation",
+                        "title": "Continue",
+                        "objective": "Keep continuity.",
+                        "workflow": "ask",
+                    },
+                    {
+                        "task_id": "two",
+                        "category": "repository_analysis",
+                        "title": "Analyze repo",
+                        "objective": "Pick the right repo.",
+                        "workflow": "agent",
+                    },
+                ],
+            )
+
+            exit_code, payload = self._run_cli_json(
+                [
+                    "--vault",
+                    str(root),
+                    "--format",
+                    "json",
+                    "benchmark-pack",
+                    "--pack-file",
+                    str(pack_path),
+                    "--category",
+                    "multi_turn_continuation",
+                ]
+            )
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(payload["tasks"]), 1)
+            self.assertEqual(payload["tasks"][0]["task_id"], "one")
+
     def test_benchmark_run_executes_task_and_outputs_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -364,6 +404,63 @@ class BenchmarkCliTests(CliTestSupport):
                 )
             self.assertEqual(exit_code, 0)
             self.assertEqual(payload["task_ids"], ["one", "two"])
+
+    def test_benchmark_compare_filters_by_category(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            pack_path = self._write_benchmark_pack(
+                root,
+                tasks=[
+                    {
+                        "task_id": "one",
+                        "category": "multi_turn_continuation",
+                        "title": "Continue",
+                        "objective": "Keep continuity.",
+                        "workflow": "ask",
+                    },
+                    {
+                        "task_id": "two",
+                        "category": "repository_analysis",
+                        "title": "Analyze repo",
+                        "objective": "Pick the right repo.",
+                        "workflow": "agent",
+                    },
+                ],
+            )
+
+            with patch(
+                "application.benchmark.run_service.BenchmarkRunService.compare_models",
+                return_value=type(
+                    "BenchmarkCompare",
+                    (),
+                    {
+                        "pack_id": "repo-aware-v1",
+                        "task_ids": ("one",),
+                        "entries": (),
+                    },
+                )(),
+            ) as compare_mock:
+                exit_code, payload = self._run_cli_json(
+                    [
+                        "--vault",
+                        str(root),
+                        "--format",
+                        "json",
+                        "benchmark-compare",
+                        "--pack-file",
+                        str(pack_path),
+                        "--category",
+                        "multi_turn_continuation",
+                        "--model",
+                        "gemma:latest",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["task_ids"], ["one"])
+            compare_tasks = compare_mock.call_args.kwargs["tasks"]
+            self.assertEqual(len(compare_tasks), 1)
+            self.assertEqual(compare_tasks[0].task_id, "one")
 
     def test_multi_turn_benchmark_run_passes_conversation_history_between_turns(self) -> None:
         service = BenchmarkRunService(

@@ -12,26 +12,99 @@ from domain.models import RetrievedNote
 
 IMPLEMENTATION_KEYWORDS = {
     "build",
-    "code",
     "create",
-    "function",
     "generate",
     "implement",
     "implementation",
     "make",
-    "method",
-    "minishell",
-    "program",
     "refactor",
-    "script",
     "write",
+}
+
+CODING_KEYWORDS = IMPLEMENTATION_KEYWORDS | {
+    "algorithm",
+    "allocator",
+    "api",
+    "bug",
+    "cleanup",
+    "compile",
+    "debug",
+    "edge",
+    "executor",
+    "flow",
+    "header",
+    "logic",
+    "memory",
+    "module",
+    "ownership",
+    "parser",
+    "pipeline",
+    "redirection",
+    "slice",
+    "struct",
+    "tokenizer",
+    "validation",
+}
+
+IMPLEMENTATION_TARGET_HINTS = {
+    "code",
+    "executor",
+    "file",
+    "files",
+    "flow",
+    "function",
+    "functions",
+    "header",
+    "headers",
+    "makefile",
+    "method",
+    "module",
+    "modules",
+    "parser",
+    "program",
+    "script",
+    "skeleton",
+    "source",
+    "struct",
 }
 
 
 def detect_task_mode(question: str) -> str:
     lowered = question.casefold()
-    if any(keyword in lowered for keyword in IMPLEMENTATION_KEYWORDS):
+    if any(
+        phrase in lowered
+        for phrase in (
+            "prepare knowledge for note",
+            "improve note '",
+            'improve note "',
+            "write a note",
+            "draft a note",
+            "create a note",
+            "generate a note",
+            "maintenance refactor",
+        )
+    ):
+        return "general"
+    implementation_action = any(keyword in lowered for keyword in IMPLEMENTATION_KEYWORDS)
+    implementation_target = any(keyword in lowered for keyword in IMPLEMENTATION_TARGET_HINTS)
+    implementation_subject = any(
+        hint in lowered
+        for hint in (
+            " in c",
+            " in python",
+            " in java",
+            " in javascript",
+            " in cpp",
+            " in c++",
+            "bsq",
+            "minishell",
+            " shell ",
+        )
+    )
+    if implementation_action and (implementation_target or implementation_subject):
         return "implementation"
+    if any(keyword in lowered for keyword in CODING_KEYWORDS):
+        return "coding"
     return "general"
 
 
@@ -46,7 +119,10 @@ def select_answer_primary_notes(
 
     question_tokens = tokens(question)
     selected: list[RetrievedNote] = []
-    limit = 3 if task_mode == "implementation" else 2
+    if task_mode in {"implementation", "coding", "agent", "note_draft"}:
+        limit = 3
+    else:
+        limit = 2
 
     for item in primary_notes:
         if len(selected) >= limit:
@@ -72,7 +148,10 @@ def select_answer_related_notes(
     primary_paths = {item.note.path for item in primary_notes}
     selected: list[RetrievedNote] = []
     seen_paths: set[str] = set()
-    limit = 2 if task_mode == "implementation" else 3
+    if task_mode in {"implementation", "coding"}:
+        limit = 2
+    else:
+        limit = 3
 
     for item in related_notes:
         if len(selected) >= limit:

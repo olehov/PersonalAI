@@ -195,6 +195,116 @@ class AnswerServiceTests(unittest.TestCase):
             self.assertIn("do not stop at architecture alone", prompt.casefold())
             self.assertIn("include at least one concrete code block or explicit file-by-file skeleton", prompt.casefold())
 
+    def test_prepare_answer_uses_coding_mode_for_code_facing_non_build_question(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Languages").mkdir()
+            (root / "Projects" / "Project Index.md").write_text(
+                "# Project Index\nRoadmap and planning hub.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nParser and executor structure for the shell.\n",
+                encoding="utf-8",
+            )
+            (root / "Languages" / "C Best Practices.md").write_text(
+                "# C Best Practices\nKeep parser, executor, and cleanup logic separate.\n",
+                encoding="utf-8",
+            )
+
+            knowledge = KnowledgeService(root)
+            knowledge.load()
+            answer = AnswerService(RetrievalService(knowledge)).prepare_answer(
+                "Explain how to design a minimal command parser for minishell in C.",
+                scope_dirs=("Projects", "Languages"),
+            )
+            payload = serialize_answer_bundle(answer)
+            combined_paths = [
+                item["note"]["path"]
+                for item in (
+                    list(payload["retrieval"]["primary_notes"]) + list(payload["retrieval"]["related_notes"])
+                )
+            ]
+
+            self.assertEqual(payload["task_mode"], "coding")
+            self.assertIn("Projects/Minishell.md", combined_paths)
+            self.assertIn("Languages/C Best Practices.md", combined_paths)
+            self.assertNotIn("Projects/Project Index.md", combined_paths)
+            self.assertIn("This request is in coding mode", payload["messages"][1]["content"])
+
+    def test_prepare_answer_supports_note_draft_mode_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Languages").mkdir()
+            (root / "Projects" / "Roadmap.md").write_text(
+                "# Roadmap\nProject planning and milestones.\n",
+                encoding="utf-8",
+            )
+            (root / "Languages" / "TCP and UDP.md").write_text(
+                "# TCP and UDP\nTransport-layer protocol behavior and tradeoffs.\n",
+                encoding="utf-8",
+            )
+
+            knowledge = KnowledgeService(root)
+            knowledge.load()
+            answer = AnswerService(RetrievalService(knowledge)).prepare_answer(
+                "Prepare knowledge for note 'TCP Retransmission Basics'. Instruction: write the missing networking note.",
+                scope_dirs=("Projects", "Languages"),
+                retrieval_task_mode_override="note_draft",
+            )
+            payload = serialize_answer_bundle(answer)
+            combined_paths = [
+                item["note"]["path"]
+                for item in (
+                    list(payload["retrieval"]["primary_notes"]) + list(payload["retrieval"]["related_notes"])
+                )
+            ]
+
+            self.assertEqual(payload["task_mode"], "general")
+            self.assertIn("Languages/TCP and UDP.md", combined_paths)
+            self.assertNotIn("Projects/Roadmap.md", combined_paths)
+            self.assertNotIn("Projects/Roadmap.md", combined_paths)
+
+    def test_prepare_answer_supports_agent_mode_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Languages").mkdir()
+            (root / "Projects" / "Project Index.md").write_text(
+                "# Project Index\nGeneral planning hub.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Minishell.md").write_text(
+                "# Minishell\nParser slice should touch lexer, parser, and command structures.\n[[Header Design in C]]\n",
+                encoding="utf-8",
+            )
+            (root / "Languages" / "Header Design in C.md").write_text(
+                "# Header Design in C\nKeep minishell parser interfaces explicit and minimal for the first parser slice.\n[[Minishell]]\n",
+                encoding="utf-8",
+            )
+
+            knowledge = KnowledgeService(root)
+            knowledge.load()
+            answer = AnswerService(RetrievalService(knowledge)).prepare_answer(
+                "Inspect the minishell repository and plan the first parser slice.",
+                scope_dirs=("Projects", "Languages"),
+                retrieval_task_mode_override="agent",
+            )
+            payload = serialize_answer_bundle(answer)
+            combined_paths = [
+                item["note"]["path"]
+                for item in (
+                    list(payload["retrieval"]["primary_notes"]) + list(payload["retrieval"]["related_notes"])
+                )
+            ]
+
+            self.assertEqual(payload["task_mode"], "coding")
+            self.assertIn("Projects/Minishell.md", combined_paths)
+            self.assertIn("Languages/Header Design in C.md", combined_paths)
+            self.assertNotIn("Projects/Project Index.md", combined_paths)
+
     def test_prepare_answer_supports_high_reasoning_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

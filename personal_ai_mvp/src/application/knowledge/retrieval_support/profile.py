@@ -92,7 +92,7 @@ def build_query_profile(
     preferred_dirs: set[str] = set()
     technical = False
     focused_coding = False
-    strict_meta_filtering = task_mode == "implementation"
+    strict_meta_filtering = task_mode in {"implementation", "coding", "note_draft"}
 
     topic_map = {
         "Algorithms": {"algorithm", "algorithms", "heap", "binary", "search", "graph", "tree", "dp"},
@@ -141,8 +141,12 @@ def build_query_profile(
         "write",
     }
     focused_coding = bool(tokens & coding_hints)
-    if strict_meta_filtering:
+    if task_mode in {"implementation", "coding", "agent"}:
         focused_coding = True
+    if strict_meta_filtering or task_mode == "agent":
+        focused_coding = True
+        technical = True
+    if task_mode == "note_draft":
         technical = True
     if re.search(r"\bminishell\b", normalized):
         focused_coding = True
@@ -199,6 +203,8 @@ def build_query_profile(
         "cross_domain": cross_domain,
         "focused_coding": focused_coding,
         "strict_meta_filtering": strict_meta_filtering,
+        "agent_mode": task_mode == "agent",
+        "note_draft_mode": task_mode == "note_draft",
         "focus_entities": focus_entities,
         "references_personal_ai_project": references_personal_ai_project,
     }

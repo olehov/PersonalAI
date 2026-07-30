@@ -189,6 +189,7 @@ class AgentRuntimeService:
             normalized_goal,
             scope_dirs=scope_dirs,
             reasoning_mode=reasoning_mode,
+            retrieval_task_mode_override="agent",
         )
         (
             planner_model,

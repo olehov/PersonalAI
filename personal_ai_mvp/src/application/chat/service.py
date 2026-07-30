@@ -118,6 +118,7 @@ class ChatService:
             normalized_question,
             scope_dirs=scope_dirs,
             reasoning_mode=reasoning_mode,
+            task_mode_override="implementation",
         )
         scoped_user_prompt = _build_scoped_user_prompt(
             answer_context=answer_bundle.messages[1].content,
