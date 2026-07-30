@@ -26,6 +26,7 @@ from infrastructure.llm.openai_responses_client import OpenAIResponsesClient
 from infrastructure.history.repository import SQLiteQueryHistoryRepository
 from infrastructure.llm.routing_model_client import RoutingModelClient
 from infrastructure.config.settings import get_settings
+from infrastructure.web_search.factory import build_web_search_service
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class CliRuntime:
     answer_service: AnswerService
     ollama_client: ModelClient
     history_repository: SQLiteQueryHistoryRepository
+    web_search_service: object
     chat_service: ChatService
     agent_runtime_service: AgentRuntimeService
     mutation_service: NoteMutationService
@@ -80,6 +82,7 @@ def build_cli_runtime(
         serialize_ollama_requests=settings.serialize_ollama_requests,
     )
     history_repository = SQLiteQueryHistoryRepository(history_db_path)
+    web_search_service = build_web_search_service(settings)
     chat_service = ChatService(answer_service, model_client, history_repository)
     agent_runtime_service = AgentRuntimeService(
         knowledge_service,
@@ -106,6 +109,7 @@ def build_cli_runtime(
         answer_service=answer_service,
         ollama_client=model_client,
         history_repository=history_repository,
+        web_search_service=web_search_service,
         chat_service=chat_service,
         agent_runtime_service=agent_runtime_service,
         mutation_service=mutation_service,

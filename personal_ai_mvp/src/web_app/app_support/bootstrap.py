@@ -19,6 +19,7 @@ from infrastructure.llm.ollama_client import OllamaClient
 from infrastructure.llm.openai_responses_client import OpenAIResponsesClient
 from infrastructure.history.repository import SQLiteQueryHistoryRepository
 from infrastructure.llm.routing_model_client import RoutingModelClient
+from infrastructure.web_search.factory import build_web_search_service
 
 
 def build_runtime_components(
@@ -61,6 +62,7 @@ def build_runtime_components(
         settings.history_db_path(vault_root)
     )
     mutation_service = NoteMutationService(knowledge, NotePolicy(vault_root))
+    web_search = build_web_search_service(settings)
     chat = ChatService(answer_service, model_client, history_repository)
     agent_runtime = AgentRuntimeService(
         knowledge,
@@ -77,6 +79,7 @@ def build_runtime_components(
         "ollama_client": model_client,
         "prompt_preprocessor": prompt_preprocessor,
         "history_repository": history_repository,
+        "web_search": web_search,
         "chat": chat,
         "agent_runtime": agent_runtime,
         "drafts": drafts,

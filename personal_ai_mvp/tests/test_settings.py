@@ -19,6 +19,11 @@ class SettingsTests(unittest.TestCase):
                 "OPENAI_BASE_URL",
                 "OPENAI_TIMEOUT_SECONDS",
                 "PERSONAL_AI_OPENAI_MODELS",
+                "PERSONAL_AI_WEB_SEARCH_PROVIDER",
+                "PERSONAL_AI_WEB_SEARCH_BASE_URL",
+                "PERSONAL_AI_WEB_SEARCH_TIMEOUT_SECONDS",
+                "PERSONAL_AI_WEB_SEARCH_MAX_RESULTS",
+                "PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS",
                 "PERSONAL_AI_DEBUG_API_ERRORS",
                 "PERSONAL_AI_SERIALIZE_OLLAMA_REQUESTS",
                 "PERSONAL_AI_DEFAULT_MODEL",
@@ -44,6 +49,11 @@ class SettingsTests(unittest.TestCase):
             os.environ["OPENAI_BASE_URL"] = "https://api.openai.example/v1"
             os.environ["OPENAI_TIMEOUT_SECONDS"] = "77"
             os.environ["PERSONAL_AI_OPENAI_MODELS"] = "gpt-5.5,gpt-5-mini"
+            os.environ["PERSONAL_AI_WEB_SEARCH_PROVIDER"] = "searxng"
+            os.environ["PERSONAL_AI_WEB_SEARCH_BASE_URL"] = "http://127.0.0.1:8899"
+            os.environ["PERSONAL_AI_WEB_SEARCH_TIMEOUT_SECONDS"] = "31"
+            os.environ["PERSONAL_AI_WEB_SEARCH_MAX_RESULTS"] = "9"
+            os.environ["PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS"] = "docs.python.org,openai.com"
             os.environ["PERSONAL_AI_DEBUG_API_ERRORS"] = "true"
             os.environ["PERSONAL_AI_SERIALIZE_OLLAMA_REQUESTS"] = "false"
             os.environ["PERSONAL_AI_DEFAULT_MODEL"] = "qwen2.5-coder:7b"
@@ -72,6 +82,14 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.openai_base_url, "https://api.openai.example/v1")
             self.assertEqual(settings.openai_timeout_seconds, 77)
             self.assertEqual(settings.openai_models, ("gpt-5.5", "gpt-5-mini"))
+            self.assertEqual(settings.web_search_provider, "searxng")
+            self.assertEqual(settings.web_search_base_url, "http://127.0.0.1:8899")
+            self.assertEqual(settings.web_search_timeout_seconds, 31)
+            self.assertEqual(settings.web_search_max_results, 9)
+            self.assertEqual(
+                settings.web_search_allowed_domains,
+                ("docs.python.org", "openai.com"),
+            )
             self.assertTrue(settings.debug_api_errors)
             self.assertFalse(settings.serialize_ollama_requests)
             self.assertEqual(settings.default_model, "qwen2.5-coder:7b")

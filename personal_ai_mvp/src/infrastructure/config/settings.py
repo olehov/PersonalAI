@@ -19,6 +19,9 @@ DEFAULT_UI_DEV_PORT = 5173
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 180
 DEFAULT_DEBUG_API_ERRORS = False
+DEFAULT_WEB_SEARCH_PROVIDER = "disabled"
+DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS = 20
+DEFAULT_WEB_SEARCH_MAX_RESULTS = 5
 
 
 def _fallback_project_root_path() -> Path:
@@ -152,6 +155,11 @@ class PersonalAISettings:
     openai_base_url: str
     openai_timeout_seconds: int
     openai_models: tuple[str, ...]
+    web_search_provider: str
+    web_search_base_url: str | None
+    web_search_timeout_seconds: int
+    web_search_max_results: int
+    web_search_allowed_domains: tuple[str, ...]
     debug_api_errors: bool
     serialize_ollama_requests: bool
     prompt_preprocessor_mode: str
@@ -213,6 +221,20 @@ class PersonalAISettings:
             openai_base_url=_read_str("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
             openai_timeout_seconds=_read_int("OPENAI_TIMEOUT_SECONDS", DEFAULT_OPENAI_TIMEOUT_SECONDS),
             openai_models=_read_csv("PERSONAL_AI_OPENAI_MODELS"),
+            web_search_provider=_read_str(
+                "PERSONAL_AI_WEB_SEARCH_PROVIDER",
+                DEFAULT_WEB_SEARCH_PROVIDER,
+            ).lower(),
+            web_search_base_url=_read_str("PERSONAL_AI_WEB_SEARCH_BASE_URL", "") or None,
+            web_search_timeout_seconds=_read_int(
+                "PERSONAL_AI_WEB_SEARCH_TIMEOUT_SECONDS",
+                DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS,
+            ),
+            web_search_max_results=_read_int(
+                "PERSONAL_AI_WEB_SEARCH_MAX_RESULTS",
+                DEFAULT_WEB_SEARCH_MAX_RESULTS,
+            ),
+            web_search_allowed_domains=_read_csv("PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS"),
             debug_api_errors=read_bool_env(
                 "PERSONAL_AI_DEBUG_API_ERRORS",
                 default=DEFAULT_DEBUG_API_ERRORS,
@@ -354,6 +376,9 @@ __all__ = [
     "DEFAULT_UI_DEV_PORT",
     "DEFAULT_UI_HOST",
     "DEFAULT_UI_PORT",
+    "DEFAULT_WEB_SEARCH_MAX_RESULTS",
+    "DEFAULT_WEB_SEARCH_PROVIDER",
+    "DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS",
     "PersonalAISettings",
     "default_ollama_fallback_base_urls",
     "get_settings",
