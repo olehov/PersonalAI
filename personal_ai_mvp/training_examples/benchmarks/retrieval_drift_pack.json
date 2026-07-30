@@ -1,0 +1,78 @@
+{
+  "pack_id": "retrieval-drift-v1",
+  "title": "Retrieval Drift Regression Benchmark Pack",
+  "description": "Regression cases for focused coding prompts that previously drifted toward project-meta notes or unrelated implementation domains.",
+  "tasks": [
+    {
+      "task_id": "bsq-full-implementation-stays-on-bsq",
+      "category": "retrieval_regression",
+      "title": "BSQ Full Implementation Request Must Stay on BSQ",
+      "objective": "Measure whether a focused BSQ coding request stays on the BSQ problem instead of drifting into unrelated sample projects or generic system-design content.",
+      "workflow": "implementation",
+      "scope_dirs": ["Projects", "Languages/C", "Algorithms"],
+      "prompt": "Generate a full BSQ implementation in C: explain architecture, modules, execution flow, edge cases, and provide the main code skeleton.",
+      "expected_signals": [
+        "mentions bsq directly",
+        "stays in c",
+        "describes parser or map loading",
+        "describes dynamic programming or square selection",
+        "describes output or marking the biggest square"
+      ],
+      "anti_signals": [
+        "switches to library management system",
+        "switches to unrelated CRUD application",
+        "focuses on generic project roadmap notes",
+        "ignores bsq-specific execution flow"
+      ],
+      "notes": [
+        "Primary regression for the recent BSQ derailment."
+      ]
+    },
+    {
+      "task_id": "minishell-parser-query-prefers-shell-context",
+      "category": "retrieval_regression",
+      "title": "Minishell Parser Request Must Prefer Shell Context Over Project Meta",
+      "objective": "Measure whether a minishell parser-design request pulls shell, parsing, and C notes instead of Project Index, README, or Roadmap notes.",
+      "workflow": "ask",
+      "scope_dirs": ["Projects", "Languages/C", "Linux"],
+      "prompt": "Explain how to design a minimal command parser for minishell in C. Focus on tokenization, quotes, pipes, and redirections.",
+      "expected_signals": [
+        "mentions minishell",
+        "mentions tokenization",
+        "mentions quotes",
+        "mentions pipes",
+        "mentions redirections"
+      ],
+      "anti_signals": [
+        "answers with roadmap or vision content",
+        "drops shell context",
+        "switches to unrelated C project structure"
+      ],
+      "notes": [
+        "Regression for focused coding retrieval where project meta notes used to dominate."
+      ]
+    },
+    {
+      "task_id": "c-gap-analysis-adds-missing-c-note",
+      "category": "retrieval_regression",
+      "title": "C Knowledge Gap Analysis Must Stay in the C Graph",
+      "objective": "Measure whether a C note-gap analysis stays grounded in the existing Languages/C slice and proposes a missing C node instead of unrelated product or roadmap notes.",
+      "workflow": "ask",
+      "scope_dirs": ["Languages/C"],
+      "prompt": "Analyze which C notes already exist and suggest one important missing node that should be added to the graph.",
+      "expected_signals": [
+        "inspects existing c notes",
+        "suggests one concrete missing c topic",
+        "keeps the answer in the c knowledge domain"
+      ],
+      "anti_signals": [
+        "switches to personalai roadmap",
+        "switches to benchmark infrastructure",
+        "suggests a non-c product note"
+      ],
+      "notes": [
+        "Regression for note-gap analysis contamination by unrelated project context."
+      ]
+    }
+  ]
+}

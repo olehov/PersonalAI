@@ -50,7 +50,21 @@ def serialize_retrieved_note(item: RetrievedNote) -> dict[str, object]:
         "score": item.score,
         "reason": item.reason,
         "debug_signals": item.debug_signals,
+        "selection_summary": _serialize_selection_summary(item.debug_signals),
         "note": serialize_note(item.note),
+    }
+
+
+def _serialize_selection_summary(debug_signals: dict[str, object]) -> dict[str, object]:
+    summary = debug_signals.get("selection_summary")
+    if isinstance(summary, dict):
+        return summary
+
+    return {
+        "stage": debug_signals.get("selection_stage", "unknown"),
+        "order": debug_signals.get("selection_order"),
+        "rank_position": debug_signals.get("rank_position"),
+        "selection_reasons": list(debug_signals.get("reason_tags", [])),
     }
 
 

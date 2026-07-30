@@ -75,6 +75,14 @@ class KnowledgeServiceTests(unittest.TestCase):
             self.assertEqual(payload["primary_notes"][0]["note"]["title"], "Architecture")
             self.assertIn("debug_signals", payload["primary_notes"][0])
             self.assertIn("note_class", payload["primary_notes"][0]["debug_signals"])
+            self.assertEqual(
+                payload["primary_notes"][0]["selection_summary"]["stage"],
+                "primary_selected",
+            )
+            self.assertEqual(
+                payload["primary_notes"][0]["debug_signals"]["survived_rerank"],
+                True,
+            )
             selected_titles = {
                 item["note"]["title"] for item in payload["primary_notes"] + payload["related_notes"]
             }
@@ -456,6 +464,13 @@ class KnowledgeServiceTests(unittest.TestCase):
             related_paths = [item["note"]["path"] for item in payload["related_notes"]]
             self.assertIn("Languages/C/Memory Management in C.md", related_paths)
             self.assertNotIn("Projects/Project Index.md", related_paths)
+            related_note = next(
+                item
+                for item in payload["related_notes"]
+                if item["note"]["path"] == "Languages/C/Memory Management in C.md"
+            )
+            self.assertEqual(related_note["selection_summary"]["stage"], "related_selected")
+            self.assertIn("linked from primary note", related_note["selection_summary"]["selection_reasons"])
 
     def test_implementation_note_class_weighting_prefers_reference_notes_over_meta_notes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -92,18 +92,64 @@ class RetrievalService:
         remaining = list(ranked)
 
         while remaining and len(selected) < limit:
-            best_index = max(
-                range(len(remaining)),
-                key=lambda index: self._primary_selection_score(
+            metrics_by_index = {
+                index: self._primary_selection_metrics(
                     remaining[index],
                     selected,
                     covered_tokens,
                     question_tokens,
-                ),
+                )
+                for index in range(len(remaining))
+            }
+            best_index = max(
+                range(len(remaining)),
+                key=lambda index: metrics_by_index[index]["selection_key"],
             )
             chosen = remaining.pop(best_index)
-            selected.append(chosen)
-            covered_tokens.update(_note_query_terms(chosen.note, question_tokens))
+            chosen_metrics = metrics_by_index[best_index]
+            covered_terms = sorted(_note_query_terms(chosen.note, question_tokens))
+            selected.append(
+                RetrievedNote(
+                    note=chosen.note,
+                    score=chosen.score,
+                    reason=chosen.reason,
+                    debug_signals={
+                        **chosen.debug_signals,
+                        "selection_stage": "primary_selected",
+                        "selection_order": len(selected) + 1,
+                        "rank_position": chosen.debug_signals.get("rank_position"),
+                        "survived_rerank": True,
+                        "selection_summary": {
+                            "stage": "primary_selected",
+                            "order": len(selected) + 1,
+                            "rank_position": chosen.debug_signals.get("rank_position"),
+                            "covered_query_terms": covered_terms,
+                            "selection_reasons": [
+                                reason
+                                for reason in (
+                                    "base retrieval score",
+                                    "diversity bonus" if chosen_metrics["diversity_bonus"] > 0 else "",
+                                    "link relation bonus" if chosen_metrics["relation_bonus"] > 0 else "",
+                                    "redundancy penalty"
+                                    if chosen_metrics["redundancy_penalty"] > 0
+                                    else "",
+                                )
+                                if reason
+                            ],
+                        },
+                        "primary_selection": {
+                            "base_score": chosen.score,
+                            "adjusted_score": chosen_metrics["adjusted_score"],
+                            "diversity_bonus": chosen_metrics["diversity_bonus"],
+                            "relation_bonus": chosen_metrics["relation_bonus"],
+                            "redundancy_penalty": chosen_metrics["redundancy_penalty"],
+                            "query_terms": sorted(chosen_metrics["query_terms"]),
+                            "uncovered_terms": sorted(chosen_metrics["uncovered_terms"]),
+                        },
+                    },
+                )
+            )
+            covered_tokens.update(covered_terms)
 
         return selected
 
@@ -133,7 +179,23 @@ class RetrievalService:
                 )
 
         ranked = self._apply_graph_reranking(ranked, profile)
-        return sorted(ranked, key=lambda item: (-item.score, item.note.path.as_posix()))
+        sorted_ranked = sorted(ranked, key=lambda item: (-item.score, item.note.path.as_posix()))
+        annotated: list[RetrievedNote] = []
+        for index, item in enumerate(sorted_ranked, start=1):
+            annotated.append(
+                RetrievedNote(
+                    note=item.note,
+                    score=item.score,
+                    reason=item.reason,
+                    debug_signals={
+                        **item.debug_signals,
+                        "selection_stage": "primary_ranked",
+                        "rank_position": index,
+                        "survived_rerank": True,
+                    },
+                )
+            )
+        return annotated
 
     def _select_related_notes(
         self,
@@ -191,10 +253,58 @@ class RetrievalService:
                 if adjusted is not None:
                     related_candidates[related.path] = adjusted
 
-        return sorted(
+        sorted_related = sorted(
             related_candidates.values(),
             key=lambda item: (-item.score, item.note.path.as_posix()),
         )[:related_limit]
+        annotated: list[RetrievedNote] = []
+        for index, item in enumerate(sorted_related, start=1):
+            linked_from = list(item.debug_signals.get("linked_from", []))
+            annotated.append(
+                RetrievedNote(
+                    note=item.note,
+                    score=item.score,
+                    reason=item.reason,
+                    debug_signals={
+                        **item.debug_signals,
+                        "selection_stage": "related_selected",
+                        "rank_position": index,
+                        "survived_rerank": True,
+                        "selection_summary": {
+                            "stage": "related_selected",
+                            "order": index,
+                            "rank_position": index,
+                            "linked_from": linked_from,
+                            "selection_reasons": [
+                                reason
+                                for reason in (
+                                    "linked from primary note" if linked_from else "",
+                                    "question overlap"
+                                    if item.debug_signals.get("related_adjustment", {}).get(
+                                        "query_overlap", 0
+                                    )
+                                    > 0
+                                    else "",
+                                    "semantic support"
+                                    if item.debug_signals.get("related_adjustment", {}).get(
+                                        "semantic_points", 0
+                                    )
+                                    > 0
+                                    else "",
+                                    "directory preference"
+                                    if item.debug_signals.get("related_adjustment", {}).get(
+                                        "path_bonus", 0
+                                    )
+                                    > 0
+                                    else "",
+                                )
+                                if reason
+                            ],
+                        },
+                    },
+                )
+            )
+        return annotated
 
     def _select_notes(self, scope_dirs: tuple[str, ...]) -> list[NoteDocument]:
         notes = self._knowledge_service.list_notes()
@@ -287,15 +397,24 @@ class RetrievalService:
 
         return bonus
 
-    def _primary_selection_score(
+    def _primary_selection_metrics(
         self,
         candidate: RetrievedNote,
         selected: list[RetrievedNote],
         covered_tokens: set[str],
         question_tokens: set[str],
-    ) -> tuple[int, int, str]:
+    ) -> dict[str, object]:
         if not selected:
-            return (candidate.score, candidate.score, candidate.note.path.as_posix())
+            query_terms = _note_query_terms(candidate.note, question_tokens)
+            return {
+                "selection_key": (candidate.score, candidate.score, candidate.note.path.as_posix()),
+                "adjusted_score": candidate.score,
+                "diversity_bonus": 0,
+                "relation_bonus": 0,
+                "redundancy_penalty": 0,
+                "query_terms": query_terms,
+                "uncovered_terms": query_terms,
+            }
 
         candidate_terms = _note_selection_terms(candidate.note)
         query_terms = candidate_terms & question_tokens
@@ -310,7 +429,15 @@ class RetrievalService:
         redundancy_penalty = int(round(redundancy * 10))
         adjusted_score = candidate.score + diversity_bonus + relation_bonus - redundancy_penalty
 
-        return (adjusted_score, candidate.score, candidate.note.path.as_posix())
+        return {
+            "selection_key": (adjusted_score, candidate.score, candidate.note.path.as_posix()),
+            "adjusted_score": adjusted_score,
+            "diversity_bonus": diversity_bonus,
+            "relation_bonus": relation_bonus,
+            "redundancy_penalty": redundancy_penalty,
+            "query_terms": query_terms,
+            "uncovered_terms": uncovered_terms,
+        }
 
     def _shares_link_with_selected(
         self,

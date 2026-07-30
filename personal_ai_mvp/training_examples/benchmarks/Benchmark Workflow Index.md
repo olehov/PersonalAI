@@ -8,6 +8,7 @@ This note groups benchmark workflow assets used to evaluate grounded answers, re
 
 - [[Repo-Aware Benchmark Pack]]
 - `multi_turn_coding_pack.json`
+- `retrieval_drift_pack.json`
 - [[Python Task CLI Benchmark Project]]
 - [[C Note Gap Benchmark Report 2026-07-02]]
 - [[Planning Role Benchmark Report 2026-07-02]]
@@ -17,6 +18,7 @@ This note groups benchmark workflow assets used to evaluate grounded answers, re
 
 - grounded coding answers
 - multi-turn coding continuation
+- retrieval drift on focused coding prompts
 - repository analysis
 - implementation scoping
 - first-slice drafting
