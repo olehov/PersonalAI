@@ -253,11 +253,11 @@ class PersonalAISettings:
             ),
             runtime_scaffold_dir_name=_read_str(
                 "PERSONAL_AI_AGENT_RUNTIME_SCAFFOLD_DIR_NAME",
-                "runtime_scaffold",
+                ".runtime/runtime_scaffold",
             ),
             runtime_write_probe_dir_name=_read_str(
                 "PERSONAL_AI_AGENT_RUNTIME_WRITE_PROBE_DIR_NAME",
-                "runtime_write_probe",
+                ".runtime/runtime_write_probe",
             ),
             restricted_note_prefixes=_path_tuple(
                 "PERSONAL_AI_RESTRICTED_NOTE_PREFIXES",

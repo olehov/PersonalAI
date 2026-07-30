@@ -128,6 +128,27 @@ class SettingsTests(unittest.TestCase):
             else:
                 os.environ["PERSONAL_AI_AGENT_RUNTIME_DRAFTS_DIR_NAME"] = previous_drafts_name
 
+    def test_runtime_scaffold_and_probe_defaults_are_hidden_under_runtime(self) -> None:
+        previous_scaffold = os.environ.get("PERSONAL_AI_AGENT_RUNTIME_SCAFFOLD_DIR_NAME")
+        previous_probe = os.environ.get("PERSONAL_AI_AGENT_RUNTIME_WRITE_PROBE_DIR_NAME")
+        try:
+            os.environ.pop("PERSONAL_AI_AGENT_RUNTIME_SCAFFOLD_DIR_NAME", None)
+            os.environ.pop("PERSONAL_AI_AGENT_RUNTIME_WRITE_PROBE_DIR_NAME", None)
+
+            settings = get_settings()
+
+            self.assertEqual(settings.runtime_scaffold_dir_name, ".runtime/runtime_scaffold")
+            self.assertEqual(settings.runtime_write_probe_dir_name, ".runtime/runtime_write_probe")
+        finally:
+            if previous_scaffold is None:
+                os.environ.pop("PERSONAL_AI_AGENT_RUNTIME_SCAFFOLD_DIR_NAME", None)
+            else:
+                os.environ["PERSONAL_AI_AGENT_RUNTIME_SCAFFOLD_DIR_NAME"] = previous_scaffold
+            if previous_probe is None:
+                os.environ.pop("PERSONAL_AI_AGENT_RUNTIME_WRITE_PROBE_DIR_NAME", None)
+            else:
+                os.environ["PERSONAL_AI_AGENT_RUNTIME_WRITE_PROBE_DIR_NAME"] = previous_probe
+
     def test_agent_default_model_falls_back_to_planner_override_when_not_explicitly_set(self) -> None:
         previous_agent_default = os.environ.get("PERSONAL_AI_AGENT_DEFAULT_MODEL")
         previous_planner = os.environ.get("PERSONAL_AI_AGENT_PLANNER_MODEL")

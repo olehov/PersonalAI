@@ -22,6 +22,29 @@ RESTRICTED_REPO_SEGMENTS = {
 }
 
 
+def _normalized_relative_parts(path_value: str) -> tuple[str, ...]:
+    """Return normalized repo-relative path parts for policy checks."""
+    normalized = path_value.replace("\\", "/").strip().strip("/")
+    if not normalized:
+        return ()
+    return tuple(part for part in Path(normalized).parts if part not in {"", "."})
+
+
+def _is_allowed_runtime_subtree(candidate_parts: tuple[str, ...]) -> bool:
+    """Return whether the candidate matches one configured runtime-safe subtree."""
+    if not candidate_parts:
+        return False
+    allowed_roots = (
+        runtime_scaffold_dir_name(),
+        runtime_write_probe_dir_name(),
+    )
+    for raw_root in allowed_roots:
+        root_parts = _normalized_relative_parts(raw_root)
+        if root_parts and candidate_parts[: len(root_parts)] == root_parts:
+            return True
+    return False
+
+
 def state_dir_name() -> str:
     """Return the configured PersonalAI state directory name."""
     return get_settings().state_dir_name
@@ -114,6 +137,14 @@ def resolve_safe_repo_write_path(
         return None, "Absolute paths are not allowed for safe repo writes."
     if any(part in {"..", ""} for part in candidate.parts):
         return None, "Parent-directory traversal is not allowed for safe repo writes."
+    candidate_parts = _normalized_relative_parts(normalized)
+    if _is_allowed_runtime_subtree(candidate_parts):
+        resolved_path = (resolved_repo_path / candidate).resolve()
+        try:
+            resolved_path.relative_to(resolved_repo_path.resolve())
+        except ValueError:
+            return None, "Resolved write target escaped the selected repository scope."
+        return resolved_path, None
     restricted_segments = RESTRICTED_REPO_SEGMENTS | {state_dir_name().casefold()}
     if any(part.casefold() in restricted_segments for part in candidate.parts):
         return None, "Safe repo writes cannot target restricted runtime or environment directories."
@@ -151,7 +182,7 @@ def build_probe_file_content(
 def is_runtime_scaffold_path(path: str) -> bool:
     """Return whether the path stays under the configured runtime scaffold root."""
     normalized = path.replace("\\", "/").strip().strip("/")
-    scaffold_root = runtime_scaffold_dir_name()
+    scaffold_root = runtime_scaffold_dir_name().replace("\\", "/").strip().strip("/")
     return normalized == scaffold_root or normalized.startswith(f"{scaffold_root}/")
 
 
