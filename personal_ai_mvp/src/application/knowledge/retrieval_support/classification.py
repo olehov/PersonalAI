@@ -99,13 +99,13 @@ def note_class_bonus(path: Path, profile: dict[str, object], reasons: list[str])
             bonus -= 4
     elif task_mode == "coding":
         if note_class == "reference":
-            bonus += 8
+            bonus += 10
         elif note_class == "project_note":
-            bonus += 4
+            bonus += 5
         elif note_class == "bridge":
             bonus += 1 if cross_domain else -3
         elif note_class == "project_meta":
-            bonus -= 12
+            bonus -= 18
     elif task_mode == "agent":
         if note_class == "project_note":
             bonus += 8

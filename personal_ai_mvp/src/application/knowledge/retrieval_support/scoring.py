@@ -195,7 +195,7 @@ def meta_penalty(path: Path, profile: dict[str, object], reasons: list[str]) -> 
             "technology stack.md",
             "mvp.md",
         }:
-            penalty += 8
+            penalty += 10
     if task_mode == "coding":
         if lower_parts[-1] in {
             "project index.md",
@@ -205,7 +205,7 @@ def meta_penalty(path: Path, profile: dict[str, object], reasons: list[str]) -> 
             "technology stack.md",
             "mvp.md",
         }:
-            penalty += 6
+            penalty += 10
     if task_mode == "agent":
         if lower_parts[-1] in {
             "project index.md",

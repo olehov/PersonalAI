@@ -520,6 +520,53 @@ class KnowledgeServiceTests(unittest.TestCase):
                 "project_meta",
             )
 
+    def test_coding_queries_keep_project_meta_notes_out_of_primary_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Projects").mkdir()
+            (root / "Languages" / "C").mkdir(parents=True)
+            (root / "Projects" / "Project Index.md").write_text(
+                "# Project Index\nBSQ overview, roadmap, milestones, and planning links.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "README.md").write_text(
+                "# README\nBuild notes, delivery scope, and project overview for BSQ.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "Roadmap.md").write_text(
+                "# Roadmap\nBSQ phases, next steps, and planning checkpoints.\n",
+                encoding="utf-8",
+            )
+            (root / "Projects" / "BSQ.md").write_text(
+                "# BSQ\nFull implementation in C with parser, solver, output rendering, and edge cases.\n",
+                encoding="utf-8",
+            )
+            (root / "Languages" / "C" / "Parsing and Validation in C.md").write_text(
+                "# Parsing and Validation in C\nValidate rows, dimensions, and parser edge cases for C programs.\n",
+                encoding="utf-8",
+            )
+
+            service = KnowledgeService(root)
+            service.load()
+            bundle = RetrievalService(service).build_context(
+                "generate a full bsq implementation in C with modules and edge cases",
+                scope_dirs=("Projects", "Languages"),
+                task_mode="coding",
+            )
+            payload = serialize_retrieval_bundle(bundle)
+
+            primary_paths = [item["note"]["path"] for item in payload["primary_notes"]]
+            combined_paths = [
+                item["note"]["path"]
+                for item in payload["primary_notes"] + payload["related_notes"]
+            ]
+
+            self.assertIn("Projects/BSQ.md", combined_paths)
+            self.assertIn("Languages/C/Parsing and Validation in C.md", combined_paths)
+            self.assertNotIn("Projects/Project Index.md", primary_paths)
+            self.assertNotIn("Projects/README.md", primary_paths)
+            self.assertNotIn("Projects/Roadmap.md", primary_paths)
+
     def test_unrelated_implementation_query_penalizes_personalai_project_notes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
