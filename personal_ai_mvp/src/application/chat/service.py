@@ -27,6 +27,7 @@ from application.chat.scope import (
     normalize_scope_question as _normalize_scope_question,
     validate_question as _validate_question,
 )
+from application.web_search.service import WebSearchResponse
 from domain.models import GeneratedAnswer, PromptMessage
 from infrastructure.llm.model_client import ModelClient
 from infrastructure.config.settings import get_settings
@@ -80,6 +81,7 @@ class ChatService:
         scope_dirs: tuple[str, ...] = (),
         conversation_history: tuple[PromptMessage, ...] = (),
         reasoning_mode: str = "standard",
+        web_search_response: WebSearchResponse | None = None,
     ) -> GeneratedAnswer:
         """Builds a grounded prompt and sends it to Ollama."""
         self._validate_question(question)
@@ -99,6 +101,7 @@ class ChatService:
             conversation_history=conversation_history,
             follow_up_context=follow_up_context,
             reasoning_mode=reasoning_mode,
+            web_search_response=web_search_response,
         )
 
     def scope_implementation(
@@ -109,6 +112,7 @@ class ChatService:
         scope_dirs: tuple[str, ...] = (),
         conversation_history: tuple[PromptMessage, ...] = (),
         reasoning_mode: str = "standard",
+        web_search_response: WebSearchResponse | None = None,
     ) -> GeneratedAnswer:
         """Converts a project-scale implementation request into an incremental scoped plan."""
         follow_up_context = build_follow_up_context(question, conversation_history)
@@ -136,6 +140,7 @@ class ChatService:
             conversation_history=conversation_history,
             follow_up_context=follow_up_context,
             reasoning_mode=reasoning_mode,
+            web_search_response=web_search_response,
         )
 
     def _validate_question(self, question: str) -> None:
@@ -164,6 +169,7 @@ class ChatService:
         conversation_history: tuple[PromptMessage, ...],
         follow_up_context: FollowUpContext,
         reasoning_mode: str = "standard",
+        web_search_response: WebSearchResponse | None = None,
     ) -> GeneratedAnswer:
         """Send a prepared prompt through Ollama and persist history when configured."""
         normalized_messages = self._merge_conversation_history(
@@ -177,6 +183,10 @@ class ChatService:
             base_messages=normalized_messages,
             question=question,
             follow_up_context=follow_up_context,
+        )
+        normalized_messages = self._apply_web_grounding(
+            base_messages=normalized_messages,
+            web_search_response=web_search_response,
         )
         started_at = perf_counter()
         answer_text = self._generate_answer_text(
@@ -303,5 +313,48 @@ class ChatService:
             PromptMessage(
                 role=last_message.role,
                 content=f"{last_message.content}\n\n{recovery_instruction}",
+            ),
+        )
+
+    def _apply_web_grounding(
+        self,
+        *,
+        base_messages: tuple[PromptMessage, ...],
+        web_search_response: WebSearchResponse | None,
+    ) -> tuple[PromptMessage, ...]:
+        if web_search_response is None or not web_search_response.results or not base_messages:
+            return base_messages
+
+        last_message = base_messages[-1]
+        if last_message.role.strip().lower() != "user":
+            return base_messages
+
+        lines = [
+            "Web Grounding:",
+            f"- provider: {web_search_response.provider}",
+            f"- query: {web_search_response.query}",
+            "- Use these external search results only as supplemental current context.",
+            "- Prefer vault notes first for implementation knowledge; use web results mainly for freshness-sensitive facts.",
+            "- If you use a web-grounded fact in the answer, cite the source URL inline near that claim.",
+            "- Do not present web-grounded facts as if they came from the vault notes.",
+            "- If vault notes and web results disagree, say that explicitly instead of blending them together.",
+        ]
+        for item in web_search_response.results:
+            snippet = item.snippet.strip() or "no snippet"
+            source = item.source.strip() or "unknown"
+            lines.extend(
+                (
+                    f"- title: {item.title}",
+                    f"  url: {item.url}",
+                    f"  source: {source}",
+                    f"  snippet: {snippet}",
+                )
+            )
+        web_context = "\n".join(lines)
+        return (
+            *base_messages[:-1],
+            PromptMessage(
+                role=last_message.role,
+                content=f"{last_message.content}\n\n{web_context}",
             ),
         )

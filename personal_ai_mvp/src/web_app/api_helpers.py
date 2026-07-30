@@ -61,4 +61,6 @@ def serialize_route_decision(decision) -> dict[str, object]:
         "reasoning_mode": decision.reasoning_mode,
         "derived_title": decision.derived_title,
         "derived_directory": decision.derived_directory,
+        "web_search_required": decision.web_search_required,
+        "web_search_reason": decision.web_search_reason,
     }

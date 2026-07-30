@@ -10,6 +10,7 @@ from application.chat.service import AskComplexityError, ChatService
 from application.knowledge.knowledge_service import KnowledgeService
 from application.knowledge.retrieval_service import RetrievalService
 from application.shared.serializers import serialize_generated_answer
+from application.web_search.service import WebSearchResponse, WebSearchResult
 from domain.models import PromptMessage
 
 
@@ -354,6 +355,55 @@ class ChatServiceTests(unittest.TestCase):
 
             self.assertIn("Task Mode:\ncoding", fake_client.calls[0][1][1].content)
             self.assertIn("This request is in coding mode", fake_client.calls[0][1][1].content)
+
+    def test_ask_appends_web_grounding_context_when_search_results_are_present(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Shell.md").write_text(
+                "# Shell\nParser and executor design notes.\n",
+                encoding="utf-8",
+            )
+
+            knowledge = KnowledgeService(root)
+            knowledge.load()
+            fake_client = FakeOllamaClient()
+            service = ChatService(
+                AnswerService(RetrievalService(knowledge)),
+                fake_client,
+                recursive_refinement_enabled=False,
+            )
+
+            service.ask(
+                "latest python asyncio docs",
+                model="llama3:latest",
+                web_search_response=WebSearchResponse(
+                    query="latest python asyncio docs",
+                    provider="searxng",
+                    enabled=True,
+                    results=(
+                        WebSearchResult(
+                            title="asyncio docs",
+                            url="https://docs.python.org/3/library/asyncio.html",
+                            snippet="Coroutines and tasks.",
+                            source="python docs",
+                        ),
+                    ),
+                ),
+            )
+
+            self.assertIn("Web Grounding:", fake_client.calls[0][1][-1].content)
+            self.assertIn(
+                "https://docs.python.org/3/library/asyncio.html",
+                fake_client.calls[0][1][-1].content,
+            )
+            self.assertIn(
+                "cite the source URL inline near that claim",
+                fake_client.calls[0][1][-1].content,
+            )
+            self.assertIn(
+                "Do not present web-grounded facts as if they came from the vault notes.",
+                fake_client.calls[0][1][-1].content,
+            )
 
     def test_ask_persists_history_when_repository_is_configured(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -14,3 +14,21 @@ def serialize_preprocess_result(result) -> dict[str, object]:
         "translator_error": result.translator_error,
         "fallback_reason": result.fallback_reason,
     }
+
+
+def serialize_web_search_response(response) -> dict[str, object]:
+    """Convert one web-search response into a JSON-friendly payload."""
+    return {
+        "query": response.query,
+        "provider": response.provider,
+        "enabled": response.enabled,
+        "results": [
+            {
+                "title": item.title,
+                "url": item.url,
+                "snippet": item.snippet,
+                "source": item.source,
+            }
+            for item in response.results
+        ],
+    }

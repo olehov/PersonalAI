@@ -33,6 +33,7 @@ from web_app.app_support.history import (
 )
 from web_app.app_support.payloads import (
     serialize_preprocess_result,
+    serialize_web_search_response,
 )
 from web_app.api_helpers import (
     normalize_reasoning_mode,
@@ -69,6 +70,7 @@ class PersonalAIWebApp:
         self._ollama_client = components["ollama_client"]
         self._prompt_preprocessor = components["prompt_preprocessor"]
         self._history_repository = components["history_repository"]
+        self._web_search = components["web_search"]
         self._chat = components["chat"]
         self._agent_runtime = components["agent_runtime"]
         self._drafts = components["drafts"]
@@ -115,6 +117,7 @@ class PersonalAIWebApp:
         conversation_history: tuple[PromptMessage, ...] = (),
         reasoning_mode: str = "standard",
         prepared: PromptPreprocessResult | None = None,
+        web_search_response=None,
     ) -> dict[str, object]:
         """Run a grounded answer request."""
         prepared = prepared or self._prompt_preprocessor.preprocess(question, workflow_hint="ask")
@@ -125,9 +128,12 @@ class PersonalAIWebApp:
             scope_dirs=parse_scope_dirs(scope_text),
             conversation_history=conversation_history,
             reasoning_mode=reasoning_mode,
+            web_search_response=web_search_response,
         )
         payload = serialize_generated_answer(answer)
         payload["preprocess"] = serialize_preprocess_result(prepared)
+        if web_search_response is not None:
+            payload["web_grounding"] = serialize_web_search_response(web_search_response)
         payload["execution"] = self._build_execution_payload(
             requested_workflow="ask",
             executed_workflow="ask",
@@ -146,6 +152,7 @@ class PersonalAIWebApp:
         conversation_history: tuple[PromptMessage, ...] = (),
         reasoning_mode: str = "standard",
         prepared: PromptPreprocessResult | None = None,
+        web_search_response=None,
     ) -> dict[str, object]:
         """Generate a scoped implementation breakdown for a project-scale request."""
         prepared = prepared or self._prompt_preprocessor.preprocess(
@@ -159,9 +166,12 @@ class PersonalAIWebApp:
             scope_dirs=parse_scope_dirs(scope_text),
             conversation_history=conversation_history,
             reasoning_mode=reasoning_mode,
+            web_search_response=web_search_response,
         )
         payload = serialize_generated_answer(answer)
         payload["preprocess"] = serialize_preprocess_result(prepared)
+        if web_search_response is not None:
+            payload["web_grounding"] = serialize_web_search_response(web_search_response)
         payload["execution"] = self._build_execution_payload(
             requested_workflow="implementation",
             executed_workflow="implementation",
@@ -305,6 +315,10 @@ class PersonalAIWebApp:
             directory=directory.strip(),
             target_dir=target_dir.strip(),
         )
+        web_search_response = self._resolve_web_search_response(
+            decision=decision,
+            prompt=prepared.processed_text,
+        )
         route_payload = serialize_route_decision(decision)
         effective_reasoning_mode = (
             decision.reasoning_mode if reasoning_mode == "auto" else normalize_reasoning_mode(reasoning_mode)
@@ -327,6 +341,7 @@ class PersonalAIWebApp:
                 conversation_history=conversation_history,
                 reasoning_mode=effective_reasoning_mode,
                 prepared=prepared,
+                web_search_response=web_search_response,
             )
         elif decision.workflow == "draft":
             result = self.draft_note(
@@ -352,7 +367,10 @@ class PersonalAIWebApp:
                 conversation_history=conversation_history,
                 reasoning_mode=effective_reasoning_mode,
                 prepared=prepared,
+                web_search_response=web_search_response,
             )
+        if web_search_response is not None and isinstance(result, dict):
+            result["web_grounding"] = serialize_web_search_response(web_search_response)
         return {
             "route": route_payload,
             "preprocess": serialize_preprocess_result(prepared),
@@ -367,6 +385,15 @@ class PersonalAIWebApp:
                 route_workflow=decision.workflow,
             ),
         }
+
+    def _resolve_web_search_response(self, *, decision, prompt: str):
+        if not decision.web_search_required:
+            return None
+        if decision.workflow not in {"ask", "implementation"}:
+            return None
+        if not self._web_search.enabled:
+            return None
+        return self._web_search.search(prompt)
 
     def list_ask_history(self, *, limit: int) -> list[dict[str, object]]:
         """Return recent grounded ask/scope history entries."""

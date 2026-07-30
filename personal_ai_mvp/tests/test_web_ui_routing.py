@@ -23,6 +23,7 @@ class WebUIRoutingTests(unittest.TestCase):
 
         self.assertEqual(decision.workflow, "implementation")
         self.assertEqual(decision.reasoning_mode, "high")
+        self.assertFalse(decision.web_search_required)
 
     def test_request_routing_service_routes_project_scale_prompt_to_agent(self) -> None:
         decision = RequestRoutingService().route_request(
@@ -58,6 +59,16 @@ class WebUIRoutingTests(unittest.TestCase):
 
         self.assertEqual(decision.workflow, "analyze")
         self.assertEqual(decision.derived_directory, "Projects/PersonalAI")
+        self.assertFalse(decision.web_search_required)
+
+    def test_request_routing_service_marks_latest_docs_prompt_for_web_grounding(self) -> None:
+        decision = RequestRoutingService().route_request(
+            prompt="Look up the latest Python asyncio documentation changes and summarize them.",
+        )
+
+        self.assertEqual(decision.workflow, "ask")
+        self.assertTrue(decision.web_search_required)
+        self.assertIsNotNone(decision.web_search_reason)
 
     def test_request_routing_service_does_not_treat_knowledge_nodes_as_note_draft(self) -> None:
         decision = RequestRoutingService().route_request(
