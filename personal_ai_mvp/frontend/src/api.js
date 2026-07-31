@@ -32,6 +32,10 @@ export function listModels() {
   return requestJson("/api/models", { method: "GET" });
 }
 
+export function getHealthStatus() {
+  return requestJson("/api/health", { method: "GET" });
+}
+
 export function autoRoute({ prompt, chatHistory = [], title = "", directory = "", targetDir = "Inbox" }) {
   return requestJson("/api/auto-route", {
     method: "POST",

@@ -416,6 +416,7 @@ class PersonalAIWebApp:
         return _health_status(
             knowledge=self._knowledge,
             has_frontend_assets=self.has_frontend_assets(),
+            web_search=self._web_search,
         )
 
     def list_models(self) -> list[str]:

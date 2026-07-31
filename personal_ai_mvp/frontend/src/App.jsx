@@ -5,6 +5,7 @@ import {
   askQuestion,
   autoRoute,
   draftNote,
+  getHealthStatus,
   getHistoryOverview,
   listAgentHistory,
   listAskHistory,
@@ -57,6 +58,7 @@ function App() {
     agent: 0,
     benchmark: 0,
   });
+  const [healthStatus, setHealthStatus] = useState(null);
 
   const activeChat = useMemo(
     () => chatSessions.find((chat) => chat.id === activeChatId) ?? null,
@@ -94,6 +96,7 @@ function App() {
   async function loadModelsAndHistory() {
     await Promise.all([
       loadModels(),
+      refreshHealthStatus(),
       refreshHistory(),
       refreshAgentHistory(),
       refreshBenchmarkHistory(),
@@ -172,6 +175,18 @@ function App() {
     }
   }
 
+  async function refreshHealthStatus() {
+    try {
+      const payload = await getHealthStatus();
+      setHealthStatus(payload);
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: error.message,
+      });
+    }
+  }
+
   function handleNewChat() {
     const nextChat = createChatSession();
     setChatSessions((current) => [nextChat, ...current]);
@@ -213,6 +228,7 @@ function App() {
     try {
       await reloadVault();
       await Promise.all([
+        refreshHealthStatus(),
         refreshHistory(),
         refreshAgentHistory(),
         refreshBenchmarkHistory(),
@@ -687,6 +703,11 @@ function App() {
           <div>
             <p className="sidebar-kicker">PersonalAI</p>
             <h1>Chats</h1>
+            {healthStatus?.web_search ? (
+              <p className="sidebar-meta">
+                Web search: {formatWebSearchHealthLabel(healthStatus.web_search)}
+              </p>
+            ) : null}
           </div>
           <button className="primary-button sidebar-new-chat" onClick={handleNewChat} type="button">
             New chat
@@ -1800,6 +1821,19 @@ function buildWebGroundingStatus(grounding) {
     return "truncated by policy";
   }
   return "unchanged";
+}
+
+function formatWebSearchHealthLabel(webSearch) {
+  if (!webSearch || typeof webSearch !== "object") {
+    return "unknown";
+  }
+  const provider = typeof webSearch.provider === "string" && webSearch.provider.trim()
+    ? webSearch.provider
+    : "unknown";
+  const status = typeof webSearch.status === "string" && webSearch.status.trim()
+    ? webSearch.status
+    : "unknown";
+  return `${provider} - ${status}`;
 }
 
 function buildDebugSignalEntries(debugSignals) {

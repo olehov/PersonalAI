@@ -266,6 +266,51 @@ class WebSearchServiceTests(unittest.TestCase):
         self.assertEqual(response.results, ())
         self.assertEqual(response.applied_max_results, 5)
 
+    def test_health_snapshot_reports_disabled_ready_and_degraded_states(self) -> None:
+        from application.web_search.service import WebSearchService
+
+        disabled_service = WebSearchService(
+            _FakeWebSearchProvider(()),
+            enabled=False,
+            default_max_results=5,
+        )
+        disabled_snapshot = disabled_service.health_snapshot()
+        self.assertEqual(disabled_snapshot.status, "disabled")
+        self.assertFalse(disabled_snapshot.enabled)
+
+        ready_service = WebSearchService(
+            _FakeWebSearchProvider(
+                (
+                    WebSearchResult(
+                        title="Docs",
+                        url="https://docs.python.org/3/",
+                        snippet="Docs",
+                        source="docs",
+                    ),
+                )
+            ),
+            enabled=True,
+            default_max_results=5,
+        )
+        ready_before = ready_service.health_snapshot()
+        self.assertEqual(ready_before.status, "ready")
+        ready_service.search("python docs")
+        ready_after = ready_service.health_snapshot()
+        self.assertEqual(ready_after.status, "ready")
+        self.assertIsNotNone(ready_after.last_attempted_at)
+        self.assertIsNotNone(ready_after.last_success_at)
+
+        degraded_service = WebSearchService(
+            _FailingWebSearchProvider("SearxNG web search timed out."),
+            enabled=True,
+            default_max_results=5,
+        )
+        degraded_service.search("python docs")
+        degraded_snapshot = degraded_service.health_snapshot()
+        self.assertEqual(degraded_snapshot.status, "degraded")
+        self.assertTrue(degraded_snapshot.degraded)
+        self.assertEqual(degraded_snapshot.last_error, "SearxNG web search timed out.")
+
 
 class _FakeWebSearchProvider:
     def __init__(self, results: tuple[WebSearchResult, ...]) -> None:

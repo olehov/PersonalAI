@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 
@@ -37,6 +38,19 @@ class WebSearchResponse:
     error: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class WebSearchHealthSnapshot:
+    """Cached runtime health for one configured web-search service."""
+
+    provider: str
+    enabled: bool
+    status: str
+    degraded: bool = False
+    last_error: str | None = None
+    last_attempted_at: str | None = None
+    last_success_at: str | None = None
+
+
 class WebSearchService:
     """Small facade over a pluggable web-search provider."""
 
@@ -56,6 +70,9 @@ class WebSearchService:
         self._max_query_chars = max(1, max_query_chars)
         self._allowed_domains = self._normalize_domains(allowed_domains)
         self._blocked_domains = self._normalize_domains(blocked_domains)
+        self._last_error: str | None = None
+        self._last_attempted_at: str | None = None
+        self._last_success_at: str | None = None
 
     def search(self, query: str, *, max_results: int | None = None) -> WebSearchResponse:
         """Run a controlled web search and normalize the result set."""
@@ -74,9 +91,11 @@ class WebSearchService:
             )
 
         limit = self._resolve_limit(max_results)
+        self._last_attempted_at = self._utcnow()
         try:
             raw_results = self._provider.search(normalized_query, max_results=limit)
         except Exception as exc:  # noqa: BLE001
+            self._last_error = str(exc)
             return WebSearchResponse(
                 query=normalized_query,
                 provider=self.provider_name,
@@ -89,6 +108,8 @@ class WebSearchService:
                 degraded=True,
                 error=str(exc),
             )
+        self._last_error = None
+        self._last_success_at = self._last_attempted_at
         invalid_result_count = 0
         blocked_result_count = 0
         allowlist_filtered_count = 0
@@ -131,6 +152,34 @@ class WebSearchService:
         """Expose whether web search is enabled at all."""
         return self._enabled
 
+    def health_snapshot(self) -> WebSearchHealthSnapshot:
+        """Return one cached health snapshot for diagnostics and UI status."""
+        if not self._enabled:
+            return WebSearchHealthSnapshot(
+                provider=self.provider_name,
+                enabled=False,
+                status="disabled",
+            )
+        if self._last_error:
+            return WebSearchHealthSnapshot(
+                provider=self.provider_name,
+                enabled=True,
+                status="degraded",
+                degraded=True,
+                last_error=self._last_error,
+                last_attempted_at=self._last_attempted_at,
+                last_success_at=self._last_success_at,
+            )
+        return WebSearchHealthSnapshot(
+            provider=self.provider_name,
+            enabled=True,
+            status="ready",
+            degraded=False,
+            last_error=None,
+            last_attempted_at=self._last_attempted_at,
+            last_success_at=self._last_success_at,
+        )
+
     def _classify_result(self, url: str) -> tuple[bool, str | None]:
         parsed = urlsplit(url)
         hostname = (parsed.hostname or "").casefold()
@@ -167,8 +216,13 @@ class WebSearchService:
             for domain in domains
         )
 
+    @staticmethod
+    def _utcnow() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
 
 __all__ = [
+    "WebSearchHealthSnapshot",
     "WebSearchResponse",
     "WebSearchResult",
     "WebSearchService",

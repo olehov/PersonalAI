@@ -123,6 +123,8 @@ class WebUIApiTests(unittest.TestCase):
             self.assertEqual(payload["status"], "ok")
             self.assertTrue(payload["vault_loaded"])
             self.assertEqual(payload["note_count"], 1)
+            self.assertIn("web_search", payload)
+            self.assertIn(payload["web_search"]["status"], {"disabled", "ready", "degraded"})
 
     def test_handle_api_request_validates_ask_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

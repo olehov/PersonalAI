@@ -38,10 +38,20 @@ def history_overview(repository) -> dict[str, int]:
     }
 
 
-def health_status(*, knowledge, has_frontend_assets: bool) -> dict[str, object]:
+def health_status(*, knowledge, has_frontend_assets: bool, web_search) -> dict[str, object]:
+    snapshot = web_search.health_snapshot()
     return {
         "status": "ok",
         "vault_loaded": True,
         "note_count": knowledge.scan_summary()["note_count"],
         "frontend_assets": has_frontend_assets,
+        "web_search": {
+            "provider": snapshot.provider,
+            "enabled": snapshot.enabled,
+            "status": snapshot.status,
+            "degraded": snapshot.degraded,
+            "last_error": snapshot.last_error,
+            "last_attempted_at": snapshot.last_attempted_at,
+            "last_success_at": snapshot.last_success_at,
+        },
     }
