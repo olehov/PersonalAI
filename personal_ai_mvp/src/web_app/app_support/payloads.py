@@ -20,8 +20,19 @@ def serialize_web_search_response(response) -> dict[str, object]:
     """Convert one web-search response into a JSON-friendly payload."""
     return {
         "query": response.query,
+        "original_query": response.original_query,
+        "query_truncated": response.query_truncated,
         "provider": response.provider,
         "enabled": response.enabled,
+        "policy": {
+            "requested_max_results": response.requested_max_results,
+            "applied_max_results": response.applied_max_results,
+            "raw_result_count": response.raw_result_count,
+            "filtered_result_count": response.filtered_result_count,
+            "invalid_result_count": response.invalid_result_count,
+            "blocked_result_count": response.blocked_result_count,
+            "allowlist_filtered_count": response.allowlist_filtered_count,
+        },
         "results": [
             {
                 "title": item.title,

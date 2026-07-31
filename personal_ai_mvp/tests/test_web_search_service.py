@@ -58,6 +58,117 @@ class WebSearchServiceTests(unittest.TestCase):
         self.assertEqual(len(response.results), 1)
         self.assertEqual(response.results[0].url, "https://docs.python.org/3/")
 
+    def test_blocked_domains_override_allowlist(self) -> None:
+        provider = _FakeWebSearchProvider(
+            (
+                WebSearchResult(
+                    title="Allowed",
+                    url="https://docs.python.org/3/library/",
+                    snippet="Docs",
+                    source="docs",
+                ),
+                WebSearchResult(
+                    title="Blocked",
+                    url="https://ads.docs.python.org/banner",
+                    snippet="Ads",
+                    source="ads",
+                ),
+            )
+        )
+
+        from application.web_search.service import WebSearchService
+
+        service = WebSearchService(
+            provider,
+            enabled=True,
+            default_max_results=5,
+            allowed_domains=("docs.python.org",),
+            blocked_domains=("ads.docs.python.org",),
+        )
+        response = service.search("python docs")
+
+        self.assertEqual(len(response.results), 1)
+        self.assertEqual(response.results[0].url, "https://docs.python.org/3/library/")
+        self.assertEqual(response.blocked_result_count, 1)
+        self.assertEqual(response.allowlist_filtered_count, 0)
+
+    def test_search_clamps_requested_results_to_configured_ceiling(self) -> None:
+        provider = _RecordingWebSearchProvider(
+            tuple(
+                WebSearchResult(
+                    title=f"Result {index}",
+                    url=f"https://docs.python.org/{index}",
+                    snippet="Docs",
+                    source="docs",
+                )
+                for index in range(10)
+            )
+        )
+
+        from application.web_search.service import WebSearchService
+
+        service = WebSearchService(
+            provider,
+            enabled=True,
+            default_max_results=3,
+        )
+        response = service.search("python docs", max_results=9)
+
+        self.assertEqual(provider.last_max_results, 3)
+        self.assertEqual(len(response.results), 3)
+        self.assertEqual(response.requested_max_results, 9)
+        self.assertEqual(response.applied_max_results, 3)
+
+    def test_search_normalizes_and_truncates_query_before_provider_call(self) -> None:
+        provider = _RecordingWebSearchProvider(())
+
+        from application.web_search.service import WebSearchService
+
+        service = WebSearchService(
+            provider,
+            enabled=True,
+            default_max_results=5,
+            max_query_chars=23,
+        )
+        response = service.search("   latest   python\tasyncio   docs   release notes   ")
+
+        self.assertEqual(response.query, "latest python asyncio d")
+        self.assertEqual(provider.last_query, "latest python asyncio d")
+        self.assertTrue(response.query_truncated)
+        self.assertIn("release notes", response.original_query)
+
+    def test_search_rejects_non_http_results(self) -> None:
+        provider = _FakeWebSearchProvider(
+            (
+                WebSearchResult(
+                    title="Unsafe",
+                    url="file:///C:/secret.txt",
+                    snippet="Nope",
+                    source="local",
+                ),
+                WebSearchResult(
+                    title="Safe",
+                    url="https://docs.python.org/3/",
+                    snippet="Docs",
+                    source="docs",
+                ),
+            )
+        )
+
+        from application.web_search.service import WebSearchService
+
+        service = WebSearchService(
+            provider,
+            enabled=True,
+            default_max_results=5,
+        )
+        response = service.search("python docs")
+
+        self.assertEqual(len(response.results), 1)
+        self.assertEqual(response.results[0].url, "https://docs.python.org/3/")
+        self.assertEqual(response.invalid_result_count, 1)
+        self.assertEqual(response.filtered_result_count, 1)
+
     def test_factory_builds_searxng_provider_when_configured(self) -> None:
         previous = {
             key: os.environ.get(key)
@@ -66,7 +177,9 @@ class WebSearchServiceTests(unittest.TestCase):
                 "PERSONAL_AI_WEB_SEARCH_BASE_URL",
                 "PERSONAL_AI_WEB_SEARCH_TIMEOUT_SECONDS",
                 "PERSONAL_AI_WEB_SEARCH_MAX_RESULTS",
+                "PERSONAL_AI_WEB_SEARCH_MAX_QUERY_CHARS",
                 "PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS",
+                "PERSONAL_AI_WEB_SEARCH_BLOCKED_DOMAINS",
             )
         }
         try:
@@ -74,7 +187,9 @@ class WebSearchServiceTests(unittest.TestCase):
             os.environ["PERSONAL_AI_WEB_SEARCH_BASE_URL"] = "http://127.0.0.1:8888"
             os.environ["PERSONAL_AI_WEB_SEARCH_TIMEOUT_SECONDS"] = "33"
             os.environ["PERSONAL_AI_WEB_SEARCH_MAX_RESULTS"] = "7"
+            os.environ["PERSONAL_AI_WEB_SEARCH_MAX_QUERY_CHARS"] = "280"
             os.environ["PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS"] = "docs.python.org,openai.com"
+            os.environ["PERSONAL_AI_WEB_SEARCH_BLOCKED_DOMAINS"] = "ads.docs.python.org"
 
             service = build_web_search_service(get_settings())
 
@@ -141,6 +256,19 @@ class _FakeWebSearchProvider:
         self._results = results
 
     def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
+        return self._results[:max_results]
+
+
+class _RecordingWebSearchProvider:
+    def __init__(self, results: tuple[WebSearchResult, ...]) -> None:
+        self.provider_name = "recording"
+        self._results = results
+        self.last_query: str | None = None
+        self.last_max_results: int | None = None
+
+    def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
+        self.last_query = query
+        self.last_max_results = max_results
         return self._results[:max_results]
 
 

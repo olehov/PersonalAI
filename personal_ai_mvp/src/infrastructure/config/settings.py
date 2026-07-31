@@ -22,6 +22,7 @@ DEFAULT_DEBUG_API_ERRORS = False
 DEFAULT_WEB_SEARCH_PROVIDER = "disabled"
 DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS = 20
 DEFAULT_WEB_SEARCH_MAX_RESULTS = 5
+DEFAULT_WEB_SEARCH_MAX_QUERY_CHARS = 400
 
 
 def _fallback_project_root_path() -> Path:
@@ -159,7 +160,9 @@ class PersonalAISettings:
     web_search_base_url: str | None
     web_search_timeout_seconds: int
     web_search_max_results: int
+    web_search_max_query_chars: int
     web_search_allowed_domains: tuple[str, ...]
+    web_search_blocked_domains: tuple[str, ...]
     debug_api_errors: bool
     serialize_ollama_requests: bool
     prompt_preprocessor_mode: str
@@ -234,7 +237,12 @@ class PersonalAISettings:
                 "PERSONAL_AI_WEB_SEARCH_MAX_RESULTS",
                 DEFAULT_WEB_SEARCH_MAX_RESULTS,
             ),
+            web_search_max_query_chars=_read_int(
+                "PERSONAL_AI_WEB_SEARCH_MAX_QUERY_CHARS",
+                DEFAULT_WEB_SEARCH_MAX_QUERY_CHARS,
+            ),
             web_search_allowed_domains=_read_csv("PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS"),
+            web_search_blocked_domains=_read_csv("PERSONAL_AI_WEB_SEARCH_BLOCKED_DOMAINS"),
             debug_api_errors=read_bool_env(
                 "PERSONAL_AI_DEBUG_API_ERRORS",
                 default=DEFAULT_DEBUG_API_ERRORS,
@@ -377,6 +385,7 @@ __all__ = [
     "DEFAULT_UI_HOST",
     "DEFAULT_UI_PORT",
     "DEFAULT_WEB_SEARCH_MAX_RESULTS",
+    "DEFAULT_WEB_SEARCH_MAX_QUERY_CHARS",
     "DEFAULT_WEB_SEARCH_PROVIDER",
     "DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS",
     "PersonalAISettings",

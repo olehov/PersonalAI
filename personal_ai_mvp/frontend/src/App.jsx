@@ -1071,6 +1071,7 @@ function StructuredResult({ chatId, messageId, payload, kind, onTaskPlanUpdate }
     <div className="structured-stack">
       <RichAnswerText text={payload.answer} />
       {payload.citations?.length ? <InfoList title="Citations" items={payload.citations} /> : null}
+      {payload.webGrounding ? <WebGroundingPanel grounding={payload.webGrounding} /> : null}
       {payload.retrieval ? <RetrievalPanel retrieval={payload.retrieval} /> : null}
     </div>
   );
@@ -1171,6 +1172,56 @@ function RetrievalPanel({ retrieval }) {
       ) : null}
       {relatedNotes.length ? (
         <RetrievalNoteList title="Related Notes" items={relatedNotes} />
+      ) : null}
+    </section>
+  );
+}
+
+function WebGroundingPanel({ grounding }) {
+  if (!grounding || typeof grounding !== "object") {
+    return null;
+  }
+
+  const policyEntries = buildWebGroundingPolicyEntries(grounding.policy);
+  const results = Array.isArray(grounding.results) ? grounding.results : [];
+
+  return (
+    <section className="agent-section retrieval-panel">
+      <div className="retrieval-panel-header">
+        <h3>Web Grounding</h3>
+        <span className="progress-panel-meta">{grounding.provider ?? "unknown"}</span>
+      </div>
+      <div className="debug-signal-grid">
+        <article className="debug-signal-card">
+          <p className="progress-preprocess-label">Original Query</p>
+          <pre>{grounding.originalQuery || grounding.query || "n/a"}</pre>
+        </article>
+        <article className="debug-signal-card">
+          <p className="progress-preprocess-label">Search Query</p>
+          <pre>{grounding.query || "n/a"}</pre>
+        </article>
+        <article className="debug-signal-card">
+          <p className="progress-preprocess-label">Query Status</p>
+          <pre>{grounding.queryTruncated ? "truncated by policy" : "unchanged"}</pre>
+        </article>
+      </div>
+      {policyEntries.length ? (
+        <div className="debug-signal-grid">
+          {policyEntries.map((entry) => (
+            <article className="debug-signal-card" key={entry.label}>
+              <p className="progress-preprocess-label">{entry.label}</p>
+              <pre>{entry.value}</pre>
+            </article>
+          ))}
+        </div>
+      ) : null}
+      {results.length ? (
+        <DetailCardList
+          title="Web Results"
+          items={results}
+          renderMeta={(item) => `${item.source || "unknown"} - ${item.title || "untitled"}`}
+          renderBody={(item) => `${item.url || ""}\n${item.snippet || ""}`.trim()}
+        />
       ) : null}
     </section>
   );
@@ -1665,6 +1716,7 @@ function normalizeResult(workflow, result) {
     answer: result.answer_text ?? "",
     citations: result.citations ?? [],
     retrieval: formatRetrievalBundle(result.prompt?.retrieval),
+    webGrounding: formatWebGroundingBundle(result.web_grounding),
   };
 }
 
@@ -1688,6 +1740,44 @@ function formatRetrievalItems(items) {
     reason: item.reason ?? "",
     debugSignals: item.debug_signals ?? null,
   }));
+}
+
+function formatWebGroundingBundle(grounding) {
+  if (!grounding || typeof grounding !== "object") {
+    return null;
+  }
+
+  return {
+    provider: grounding.provider ?? "",
+    query: grounding.query ?? "",
+    originalQuery: grounding.original_query ?? "",
+    queryTruncated: grounding.query_truncated === true,
+    policy: grounding.policy ?? null,
+    results: Array.isArray(grounding.results)
+      ? grounding.results.map((item) => ({
+          title: item.title ?? "",
+          url: item.url ?? "",
+          snippet: item.snippet ?? "",
+          source: item.source ?? "",
+        }))
+      : [],
+  };
+}
+
+function buildWebGroundingPolicyEntries(policy) {
+  if (!policy || typeof policy !== "object") {
+    return [];
+  }
+
+  return [
+    { label: "Requested Results", value: String(policy.requested_max_results ?? 0) },
+    { label: "Applied Results", value: String(policy.applied_max_results ?? 0) },
+    { label: "Raw Results", value: String(policy.raw_result_count ?? 0) },
+    { label: "Filtered Results", value: String(policy.filtered_result_count ?? 0) },
+    { label: "Invalid URL Results", value: String(policy.invalid_result_count ?? 0) },
+    { label: "Blocked Domain Results", value: String(policy.blocked_result_count ?? 0) },
+    { label: "Allowlist Filtered", value: String(policy.allowlist_filtered_count ?? 0) },
+  ];
 }
 
 function buildDebugSignalEntries(debugSignals) {

@@ -23,7 +23,9 @@ class SettingsTests(unittest.TestCase):
                 "PERSONAL_AI_WEB_SEARCH_BASE_URL",
                 "PERSONAL_AI_WEB_SEARCH_TIMEOUT_SECONDS",
                 "PERSONAL_AI_WEB_SEARCH_MAX_RESULTS",
+                "PERSONAL_AI_WEB_SEARCH_MAX_QUERY_CHARS",
                 "PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS",
+                "PERSONAL_AI_WEB_SEARCH_BLOCKED_DOMAINS",
                 "PERSONAL_AI_DEBUG_API_ERRORS",
                 "PERSONAL_AI_SERIALIZE_OLLAMA_REQUESTS",
                 "PERSONAL_AI_DEFAULT_MODEL",
@@ -53,7 +55,9 @@ class SettingsTests(unittest.TestCase):
             os.environ["PERSONAL_AI_WEB_SEARCH_BASE_URL"] = "http://127.0.0.1:8899"
             os.environ["PERSONAL_AI_WEB_SEARCH_TIMEOUT_SECONDS"] = "31"
             os.environ["PERSONAL_AI_WEB_SEARCH_MAX_RESULTS"] = "9"
+            os.environ["PERSONAL_AI_WEB_SEARCH_MAX_QUERY_CHARS"] = "280"
             os.environ["PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS"] = "docs.python.org,openai.com"
+            os.environ["PERSONAL_AI_WEB_SEARCH_BLOCKED_DOMAINS"] = "ads.docs.python.org,tracker.example"
             os.environ["PERSONAL_AI_DEBUG_API_ERRORS"] = "true"
             os.environ["PERSONAL_AI_SERIALIZE_OLLAMA_REQUESTS"] = "false"
             os.environ["PERSONAL_AI_DEFAULT_MODEL"] = "qwen2.5-coder:7b"
@@ -86,9 +90,14 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.web_search_base_url, "http://127.0.0.1:8899")
             self.assertEqual(settings.web_search_timeout_seconds, 31)
             self.assertEqual(settings.web_search_max_results, 9)
+            self.assertEqual(settings.web_search_max_query_chars, 280)
             self.assertEqual(
                 settings.web_search_allowed_domains,
                 ("docs.python.org", "openai.com"),
+            )
+            self.assertEqual(
+                settings.web_search_blocked_domains,
+                ("ads.docs.python.org", "tracker.example"),
             )
             self.assertTrue(settings.debug_api_errors)
             self.assertFalse(settings.serialize_ollama_requests)
