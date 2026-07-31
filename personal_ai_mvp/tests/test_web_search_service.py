@@ -314,22 +314,34 @@ class WebSearchServiceTests(unittest.TestCase):
     def test_refresh_health_uses_provider_probe(self) -> None:
         from application.web_search.service import WebSearchService
 
+        clock = _MutableClock()
         ready_provider = _ProbeWebSearchProvider()
         ready_service = WebSearchService(
             ready_provider,
             enabled=True,
             default_max_results=5,
+            health_probe_ttl_seconds=60,
+            time_source=clock.now,
         )
         ready_snapshot = ready_service.refresh_health()
         self.assertEqual(ready_snapshot.status, "ready")
         self.assertEqual(ready_provider.probe_calls, 1)
         self.assertIsNotNone(ready_snapshot.last_success_at)
+        cached_snapshot = ready_service.refresh_health()
+        self.assertEqual(cached_snapshot.status, "ready")
+        self.assertEqual(ready_provider.probe_calls, 1)
+        clock.advance(61)
+        refreshed_snapshot = ready_service.refresh_health()
+        self.assertEqual(refreshed_snapshot.status, "ready")
+        self.assertEqual(ready_provider.probe_calls, 2)
 
         failing_provider = _FailingProbeWebSearchProvider("probe failed")
         failing_service = WebSearchService(
             failing_provider,
             enabled=True,
             default_max_results=5,
+            health_probe_ttl_seconds=60,
+            time_source=_MutableClock().now,
         )
         failing_snapshot = failing_service.refresh_health()
         self.assertEqual(failing_snapshot.status, "degraded")
@@ -395,6 +407,17 @@ class _FailingProbeWebSearchProvider:
     def probe(self) -> None:
         self.probe_calls += 1
         raise RuntimeError(self._message)
+
+
+class _MutableClock:
+    def __init__(self) -> None:
+        self._value = 0.0
+
+    def now(self) -> float:
+        return self._value
+
+    def advance(self, seconds: float) -> None:
+        self._value += seconds
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from time import perf_counter
 from urllib.parse import urlsplit
 
 
@@ -61,18 +62,23 @@ class WebSearchService:
         enabled: bool,
         default_max_results: int,
         max_query_chars: int = 400,
+        health_probe_ttl_seconds: int = 30,
         allowed_domains: tuple[str, ...] = (),
         blocked_domains: tuple[str, ...] = (),
+        time_source=None,
     ) -> None:
         self._provider = provider
         self._enabled = enabled
         self._default_max_results = max(1, default_max_results)
         self._max_query_chars = max(1, max_query_chars)
+        self._health_probe_ttl_seconds = max(1, health_probe_ttl_seconds)
         self._allowed_domains = self._normalize_domains(allowed_domains)
         self._blocked_domains = self._normalize_domains(blocked_domains)
+        self._time_source = time_source or perf_counter
         self._last_error: str | None = None
         self._last_attempted_at: str | None = None
         self._last_success_at: str | None = None
+        self._last_health_probe_monotonic: float | None = None
 
     def search(self, query: str, *, max_results: int | None = None) -> WebSearchResponse:
         """Run a controlled web search and normalize the result set."""
@@ -96,6 +102,7 @@ class WebSearchService:
             raw_results = self._provider.search(normalized_query, max_results=limit)
         except Exception as exc:  # noqa: BLE001
             self._last_error = str(exc)
+            self._last_health_probe_monotonic = self._time_source()
             return WebSearchResponse(
                 query=normalized_query,
                 provider=self.provider_name,
@@ -110,6 +117,7 @@ class WebSearchService:
             )
         self._last_error = None
         self._last_success_at = self._last_attempted_at
+        self._last_health_probe_monotonic = self._time_source()
         invalid_result_count = 0
         blocked_result_count = 0
         allowlist_filtered_count = 0
@@ -184,16 +192,22 @@ class WebSearchService:
         """Actively probe the provider and update the cached health state."""
         if not self._enabled:
             return self.health_snapshot()
+        if self._last_health_probe_monotonic is not None:
+            elapsed = self._time_source() - self._last_health_probe_monotonic
+            if elapsed < self._health_probe_ttl_seconds:
+                return self.health_snapshot()
 
         self._last_attempted_at = self._utcnow()
         try:
             self._provider.probe()
         except Exception as exc:  # noqa: BLE001
             self._last_error = str(exc)
+            self._last_health_probe_monotonic = self._time_source()
             return self.health_snapshot()
 
         self._last_error = None
         self._last_success_at = self._last_attempted_at
+        self._last_health_probe_monotonic = self._time_source()
         return self.health_snapshot()
 
     def _classify_result(self, url: str) -> tuple[bool, str | None]:

@@ -34,6 +34,7 @@ def build_web_search_service(settings) -> WebSearchService:
         enabled=enabled,
         default_max_results=settings.web_search_max_results,
         max_query_chars=settings.web_search_max_query_chars,
+        health_probe_ttl_seconds=settings.web_search_health_probe_ttl_seconds,
         allowed_domains=settings.web_search_allowed_domains,
         blocked_domains=settings.web_search_blocked_domains,
     )

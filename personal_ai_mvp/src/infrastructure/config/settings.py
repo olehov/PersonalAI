@@ -23,6 +23,7 @@ DEFAULT_WEB_SEARCH_PROVIDER = "disabled"
 DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS = 20
 DEFAULT_WEB_SEARCH_MAX_RESULTS = 5
 DEFAULT_WEB_SEARCH_MAX_QUERY_CHARS = 400
+DEFAULT_WEB_SEARCH_HEALTH_PROBE_TTL_SECONDS = 30
 
 
 def _fallback_project_root_path() -> Path:
@@ -161,6 +162,7 @@ class PersonalAISettings:
     web_search_timeout_seconds: int
     web_search_max_results: int
     web_search_max_query_chars: int
+    web_search_health_probe_ttl_seconds: int
     web_search_allowed_domains: tuple[str, ...]
     web_search_blocked_domains: tuple[str, ...]
     debug_api_errors: bool
@@ -240,6 +242,10 @@ class PersonalAISettings:
             web_search_max_query_chars=_read_int(
                 "PERSONAL_AI_WEB_SEARCH_MAX_QUERY_CHARS",
                 DEFAULT_WEB_SEARCH_MAX_QUERY_CHARS,
+            ),
+            web_search_health_probe_ttl_seconds=_read_int(
+                "PERSONAL_AI_WEB_SEARCH_HEALTH_PROBE_TTL_SECONDS",
+                DEFAULT_WEB_SEARCH_HEALTH_PROBE_TTL_SECONDS,
             ),
             web_search_allowed_domains=_read_csv("PERSONAL_AI_WEB_SEARCH_ALLOWED_DOMAINS"),
             web_search_blocked_domains=_read_csv("PERSONAL_AI_WEB_SEARCH_BLOCKED_DOMAINS"),
@@ -386,6 +392,7 @@ __all__ = [
     "DEFAULT_UI_PORT",
     "DEFAULT_WEB_SEARCH_MAX_RESULTS",
     "DEFAULT_WEB_SEARCH_MAX_QUERY_CHARS",
+    "DEFAULT_WEB_SEARCH_HEALTH_PROBE_TTL_SECONDS",
     "DEFAULT_WEB_SEARCH_PROVIDER",
     "DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS",
     "PersonalAISettings",
