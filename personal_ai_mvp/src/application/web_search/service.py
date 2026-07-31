@@ -33,6 +33,8 @@ class WebSearchResponse:
     invalid_result_count: int = 0
     blocked_result_count: int = 0
     allowlist_filtered_count: int = 0
+    degraded: bool = False
+    error: str | None = None
 
 
 class WebSearchService:
@@ -72,7 +74,21 @@ class WebSearchService:
             )
 
         limit = self._resolve_limit(max_results)
-        raw_results = self._provider.search(normalized_query, max_results=limit)
+        try:
+            raw_results = self._provider.search(normalized_query, max_results=limit)
+        except Exception as exc:  # noqa: BLE001
+            return WebSearchResponse(
+                query=normalized_query,
+                provider=self.provider_name,
+                results=(),
+                enabled=self._enabled,
+                original_query=query,
+                query_truncated=query_truncated,
+                requested_max_results=requested_limit,
+                applied_max_results=limit,
+                degraded=True,
+                error=str(exc),
+            )
         invalid_result_count = 0
         blocked_result_count = 0
         allowlist_filtered_count = 0

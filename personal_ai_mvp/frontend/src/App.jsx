@@ -1202,9 +1202,17 @@ function WebGroundingPanel({ grounding }) {
         </article>
         <article className="debug-signal-card">
           <p className="progress-preprocess-label">Query Status</p>
-          <pre>{grounding.queryTruncated ? "truncated by policy" : "unchanged"}</pre>
+          <pre>{buildWebGroundingStatus(grounding)}</pre>
         </article>
       </div>
+      {grounding.error ? (
+        <div className="debug-signal-grid">
+          <article className="debug-signal-card">
+            <p className="progress-preprocess-label">Provider Error</p>
+            <pre>{grounding.error}</pre>
+          </article>
+        </div>
+      ) : null}
       {policyEntries.length ? (
         <div className="debug-signal-grid">
           {policyEntries.map((entry) => (
@@ -1752,6 +1760,8 @@ function formatWebGroundingBundle(grounding) {
     query: grounding.query ?? "",
     originalQuery: grounding.original_query ?? "",
     queryTruncated: grounding.query_truncated === true,
+    degraded: grounding.degraded === true,
+    error: grounding.error ?? "",
     policy: grounding.policy ?? null,
     results: Array.isArray(grounding.results)
       ? grounding.results.map((item) => ({
@@ -1778,6 +1788,18 @@ function buildWebGroundingPolicyEntries(policy) {
     { label: "Blocked Domain Results", value: String(policy.blocked_result_count ?? 0) },
     { label: "Allowlist Filtered", value: String(policy.allowlist_filtered_count ?? 0) },
   ];
+}
+
+function buildWebGroundingStatus(grounding) {
+  if (grounding?.degraded) {
+    return grounding?.queryTruncated
+      ? "search degraded, query truncated by policy"
+      : "search degraded";
+  }
+  if (grounding?.queryTruncated) {
+    return "truncated by policy";
+  }
+  return "unchanged";
 }
 
 function buildDebugSignalEntries(debugSignals) {

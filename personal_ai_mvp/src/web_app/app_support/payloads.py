@@ -24,6 +24,8 @@ def serialize_web_search_response(response) -> dict[str, object]:
         "query_truncated": response.query_truncated,
         "provider": response.provider,
         "enabled": response.enabled,
+        "degraded": response.degraded,
+        "error": response.error,
         "policy": {
             "requested_max_results": response.requested_max_results,
             "applied_max_results": response.applied_max_results,

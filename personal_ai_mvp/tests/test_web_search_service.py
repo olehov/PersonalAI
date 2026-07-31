@@ -249,6 +249,23 @@ class WebSearchServiceTests(unittest.TestCase):
                 else:
                     os.environ[key] = value
 
+    def test_search_returns_degraded_response_when_provider_fails(self) -> None:
+        from application.web_search.service import WebSearchService
+
+        service = WebSearchService(
+            _FailingWebSearchProvider("SearxNG web search timed out."),
+            enabled=True,
+            default_max_results=5,
+        )
+
+        response = service.search("latest python docs")
+
+        self.assertTrue(response.enabled)
+        self.assertTrue(response.degraded)
+        self.assertEqual(response.error, "SearxNG web search timed out.")
+        self.assertEqual(response.results, ())
+        self.assertEqual(response.applied_max_results, 5)
+
 
 class _FakeWebSearchProvider:
     def __init__(self, results: tuple[WebSearchResult, ...]) -> None:
@@ -270,6 +287,15 @@ class _RecordingWebSearchProvider:
         self.last_query = query
         self.last_max_results = max_results
         return self._results[:max_results]
+
+
+class _FailingWebSearchProvider:
+    def __init__(self, message: str) -> None:
+        self.provider_name = "failing"
+        self._message = message
+
+    def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
+        raise RuntimeError(self._message)
 
 
 if __name__ == "__main__":

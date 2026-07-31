@@ -529,6 +529,8 @@ class WebUIApiTests(unittest.TestCase):
                     query_truncated=True,
                     provider="searxng",
                     enabled=True,
+                    degraded=False,
+                    error=None,
                     requested_max_results=8,
                     applied_max_results=5,
                     raw_result_count=5,
@@ -576,6 +578,53 @@ class WebUIApiTests(unittest.TestCase):
                 payload["result"]["web_grounding"]["results"][0]["url"],
                 "https://docs.python.org/3/library/asyncio.html",
             )
+
+    def test_handle_api_request_auto_run_survives_web_search_failure_with_degraded_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app = build_app(root)
+            app._web_search = _FakeWebSearchService(  # type: ignore[attr-defined]
+                SimpleNamespace(
+                    query="latest python asyncio docs",
+                    original_query="latest python asyncio docs",
+                    query_truncated=False,
+                    provider="searxng",
+                    enabled=True,
+                    requested_max_results=5,
+                    applied_max_results=5,
+                    raw_result_count=0,
+                    filtered_result_count=0,
+                    invalid_result_count=0,
+                    blocked_result_count=0,
+                    allowlist_filtered_count=0,
+                    degraded=True,
+                    error="SearxNG web search timed out.",
+                    results=(),
+                )
+            )
+
+            status_code, payload = handle_api_request(
+                app,
+                method="POST",
+                path="/api/auto-run",
+                body=json.dumps(
+                    {
+                        "prompt": "Look up the latest Python asyncio docs and summarize changes.",
+                        "model": "gpt-oss:20b",
+                        "scope_text": "Projects, Languages/C",
+                    }
+                ),
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(payload["route"]["workflow"], "ask")
+            self.assertTrue(payload["result"]["web_grounding"]["degraded"])
+            self.assertEqual(
+                payload["result"]["web_grounding"]["error"],
+                "SearxNG web search timed out.",
+            )
+            self.assertIsInstance(payload["result"]["answer_text"], str)
+            self.assertTrue(payload["result"]["answer_text"].strip())
 
     def test_handle_api_request_auto_run_uses_prompt_preprocessor(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
