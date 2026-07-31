@@ -180,6 +180,22 @@ class WebSearchService:
             last_success_at=self._last_success_at,
         )
 
+    def refresh_health(self) -> WebSearchHealthSnapshot:
+        """Actively probe the provider and update the cached health state."""
+        if not self._enabled:
+            return self.health_snapshot()
+
+        self._last_attempted_at = self._utcnow()
+        try:
+            self._provider.probe()
+        except Exception as exc:  # noqa: BLE001
+            self._last_error = str(exc)
+            return self.health_snapshot()
+
+        self._last_error = None
+        self._last_success_at = self._last_attempted_at
+        return self.health_snapshot()
+
     def _classify_result(self, url: str) -> tuple[bool, str | None]:
         parsed = urlsplit(url)
         hostname = (parsed.hostname or "").casefold()

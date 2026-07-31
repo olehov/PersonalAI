@@ -39,7 +39,7 @@ def history_overview(repository) -> dict[str, int]:
 
 
 def health_status(*, knowledge, has_frontend_assets: bool, web_search) -> dict[str, object]:
-    snapshot = web_search.health_snapshot()
+    snapshot = web_search.refresh_health()
     return {
         "status": "ok",
         "vault_loaded": True,

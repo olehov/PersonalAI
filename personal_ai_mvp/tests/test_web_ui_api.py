@@ -96,10 +96,26 @@ class _FakeWebSearchService:
         self.enabled = True
         self._response = response
         self.queries: list[str] = []
+        self.refresh_calls = 0
 
     def search(self, query: str):  # type: ignore[no-untyped-def]
         self.queries.append(query)
         return self._response
+
+    def refresh_health(self):  # type: ignore[no-untyped-def]
+        self.refresh_calls += 1
+        return SimpleNamespace(
+            provider=getattr(self._response, "provider", "fake"),
+            enabled=self.enabled,
+            status="degraded" if getattr(self._response, "degraded", False) else "ready",
+            degraded=getattr(self._response, "degraded", False),
+            last_error=getattr(self._response, "error", None),
+            last_attempted_at="2026-07-31T12:00:00+00:00",
+            last_success_at=None if getattr(self._response, "degraded", False) else "2026-07-31T12:00:00+00:00",
+        )
+
+    def health_snapshot(self):  # type: ignore[no-untyped-def]
+        return self.refresh_health()
 
 
 class WebUIApiTests(unittest.TestCase):
@@ -125,6 +141,35 @@ class WebUIApiTests(unittest.TestCase):
             self.assertEqual(payload["note_count"], 1)
             self.assertIn("web_search", payload)
             self.assertIn(payload["web_search"]["status"], {"disabled", "ready", "degraded"})
+
+    def test_handle_api_request_health_uses_active_web_search_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Architecture.md").write_text(
+                "# Architecture\nRuntime overview.\n",
+                encoding="utf-8",
+            )
+            app = build_app(root)
+            fake_web_search = _FakeWebSearchService(
+                SimpleNamespace(
+                    provider="searxng",
+                    degraded=True,
+                    error="probe failed",
+                )
+            )
+            app._web_search = fake_web_search  # type: ignore[attr-defined]
+
+            status_code, payload = handle_api_request(
+                app,
+                method="GET",
+                path="/api/health",
+                body=None,
+            )
+
+            self.assertEqual(status_code, 200)
+            self.assertEqual(fake_web_search.refresh_calls, 1)
+            self.assertEqual(payload["web_search"]["status"], "degraded")
+            self.assertEqual(payload["web_search"]["last_error"], "probe failed")
 
     def test_handle_api_request_validates_ask_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

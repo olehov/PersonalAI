@@ -21,6 +21,21 @@ class SearxngWebSearchProvider:
     def provider_name(self) -> str:
         return "searxng"
 
+    def probe(self) -> None:
+        request = Request(
+            f"{self._base_url}/search?format=json&q=healthcheck",
+            headers={"Accept": "application/json", "User-Agent": "PersonalAI/1.0"},
+        )
+        try:
+            with urlopen(request, timeout=self._timeout_seconds) as response:
+                json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            raise RuntimeError(f"SearxNG request failed with HTTP {exc.code}.") from exc
+        except URLError as exc:
+            raise RuntimeError("Failed to reach SearxNG during web search execution.") from exc
+        except TimeoutError as exc:
+            raise RuntimeError("SearxNG web search timed out.") from exc
+
     def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
         params = urlencode(
             {

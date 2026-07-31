@@ -17,5 +17,8 @@ class WebSearchProvider(Protocol):
     def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
         """Execute a web search and return normalized result objects."""
 
+    def probe(self) -> None:
+        """Perform a lightweight provider health probe or raise on failure."""
+
 
 __all__ = ["WebSearchProvider"]

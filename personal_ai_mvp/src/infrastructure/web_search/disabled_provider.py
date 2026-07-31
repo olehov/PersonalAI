@@ -15,5 +15,8 @@ class DisabledWebSearchProvider:
     def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
         return ()
 
+    def probe(self) -> None:
+        return None
+
 
 __all__ = ["DisabledWebSearchProvider"]

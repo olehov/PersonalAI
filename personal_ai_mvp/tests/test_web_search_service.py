@@ -311,6 +311,31 @@ class WebSearchServiceTests(unittest.TestCase):
         self.assertTrue(degraded_snapshot.degraded)
         self.assertEqual(degraded_snapshot.last_error, "SearxNG web search timed out.")
 
+    def test_refresh_health_uses_provider_probe(self) -> None:
+        from application.web_search.service import WebSearchService
+
+        ready_provider = _ProbeWebSearchProvider()
+        ready_service = WebSearchService(
+            ready_provider,
+            enabled=True,
+            default_max_results=5,
+        )
+        ready_snapshot = ready_service.refresh_health()
+        self.assertEqual(ready_snapshot.status, "ready")
+        self.assertEqual(ready_provider.probe_calls, 1)
+        self.assertIsNotNone(ready_snapshot.last_success_at)
+
+        failing_provider = _FailingProbeWebSearchProvider("probe failed")
+        failing_service = WebSearchService(
+            failing_provider,
+            enabled=True,
+            default_max_results=5,
+        )
+        failing_snapshot = failing_service.refresh_health()
+        self.assertEqual(failing_snapshot.status, "degraded")
+        self.assertEqual(failing_snapshot.last_error, "probe failed")
+        self.assertEqual(failing_provider.probe_calls, 1)
+
 
 class _FakeWebSearchProvider:
     def __init__(self, results: tuple[WebSearchResult, ...]) -> None:
@@ -340,6 +365,35 @@ class _FailingWebSearchProvider:
         self._message = message
 
     def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
+        raise RuntimeError(self._message)
+
+    def probe(self) -> None:
+        raise RuntimeError(self._message)
+
+
+class _ProbeWebSearchProvider:
+    def __init__(self) -> None:
+        self.provider_name = "probe"
+        self.probe_calls = 0
+
+    def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
+        return ()
+
+    def probe(self) -> None:
+        self.probe_calls += 1
+
+
+class _FailingProbeWebSearchProvider:
+    def __init__(self, message: str) -> None:
+        self.provider_name = "probe-failing"
+        self._message = message
+        self.probe_calls = 0
+
+    def search(self, query: str, *, max_results: int) -> tuple[WebSearchResult, ...]:
+        return ()
+
+    def probe(self) -> None:
+        self.probe_calls += 1
         raise RuntimeError(self._message)
 
 
