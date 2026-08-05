@@ -12,6 +12,7 @@ from application.shared.serializers import (
     serialize_agent_runtime_artifact,
     serialize_generated_answer,
 )
+from application.web_search.service import WebSearchResponse
 from domain.models import PromptMessage
 
 
@@ -59,10 +60,12 @@ class BenchmarkRunService:
         self,
         chat_service: ChatService,
         agent_runtime_service: AgentRuntimeService,
+        web_search_service=None,
         history_repository=None,
     ) -> None:
         self._chat_service = chat_service
         self._agent_runtime_service = agent_runtime_service
+        self._web_search_service = web_search_service
         self._history_repository = history_repository
 
     def run_task(
@@ -87,8 +90,14 @@ class BenchmarkRunService:
                 prompt=task.prompt,
                 model=model,
                 scope_dirs=task.scope_dirs,
+                web_grounding_mode=task.web_grounding_mode,
+                web_grounding_query=task.web_grounding_query,
             )
 
+        result_payload = self._attach_benchmark_metadata(
+            payload=result_payload,
+            task=task,
+        )
         latency_ms = max(int((perf_counter() - started_at) * 1000), 0)
         result = BenchmarkRunResult(
             pack_id=pack_id,
@@ -146,23 +155,43 @@ class BenchmarkRunService:
         model: str,
         scope_dirs: tuple[str, ...],
         conversation_history: tuple[PromptMessage, ...] = (),
+        web_grounding_mode: str = "disabled",
+        web_grounding_query: str = "",
     ) -> tuple[str, dict[str, object]]:
+        web_search_response = self._resolve_web_grounding_response(
+            workflow=workflow,
+            prompt=prompt,
+            web_grounding_mode=web_grounding_mode,
+            web_grounding_query=web_grounding_query,
+        )
         if workflow == "ask":
             generated = self._chat_service.ask(
                 prompt,
                 model=model,
                 scope_dirs=scope_dirs,
                 conversation_history=conversation_history,
+                web_search_response=web_search_response,
             )
-            return "completed", serialize_generated_answer(generated)
+            return "completed", self._attach_web_grounding_details(
+                payload=serialize_generated_answer(generated),
+                web_grounding_mode=web_grounding_mode,
+                web_grounding_query=web_grounding_query,
+                web_search_response=web_search_response,
+            )
         if workflow == "implementation":
             generated = self._chat_service.scope_implementation(
                 prompt,
                 model=model,
                 scope_dirs=scope_dirs,
                 conversation_history=conversation_history,
+                web_search_response=web_search_response,
             )
-            return "completed", serialize_generated_answer(generated)
+            return "completed", self._attach_web_grounding_details(
+                payload=serialize_generated_answer(generated),
+                web_grounding_mode=web_grounding_mode,
+                web_grounding_query=web_grounding_query,
+                web_search_response=web_search_response,
+            )
         if workflow == "agent":
             artifact = self._agent_runtime_service.run(
                 prompt,
@@ -170,7 +199,12 @@ class BenchmarkRunService:
                 scope_dirs=scope_dirs,
                 conversation_history=conversation_history,
             )
-            return artifact.status, serialize_agent_runtime_artifact(artifact)
+            return artifact.status, self._attach_web_grounding_details(
+                payload=serialize_agent_runtime_artifact(artifact),
+                web_grounding_mode=web_grounding_mode,
+                web_grounding_query=web_grounding_query,
+                web_search_response=web_search_response,
+            )
         raise ValueError(f"Unsupported benchmark workflow: {workflow}")
 
     def _run_multi_turn_task(
@@ -190,6 +224,8 @@ class BenchmarkRunService:
                 model=model,
                 scope_dirs=task.scope_dirs,
                 conversation_history=conversation_history,
+                web_grounding_mode=task.web_grounding_mode,
+                web_grounding_query=task.web_grounding_query,
             )
             turn_results.append(
                 {
@@ -225,6 +261,73 @@ class BenchmarkRunService:
                 "turn_results": turn_results,
             },
         )
+
+    def _resolve_web_grounding_response(
+        self,
+        *,
+        workflow: str,
+        prompt: str,
+        web_grounding_mode: str,
+        web_grounding_query: str,
+    ) -> WebSearchResponse | None:
+        normalized_mode = (web_grounding_mode or "disabled").strip().lower()
+        if normalized_mode == "disabled":
+            return None
+        if workflow not in {"ask", "implementation"}:
+            return None
+        if self._web_search_service is None:
+            return None
+        query = (web_grounding_query or prompt).strip()
+        if not query:
+            return None
+        return self._web_search_service.search(query)
+
+    def _attach_benchmark_metadata(
+        self,
+        *,
+        payload: dict[str, object],
+        task: RepoBenchmarkTask,
+    ) -> dict[str, object]:
+        updated = dict(payload)
+        metadata = dict(updated.get("benchmark_metadata", {}))
+        metadata.setdefault("task_id", task.task_id)
+        metadata.setdefault("workflow", task.workflow)
+        metadata.setdefault("scope_dirs", list(task.scope_dirs))
+        metadata.setdefault("web_grounding_mode", task.web_grounding_mode)
+        metadata.setdefault("web_grounding_query", task.web_grounding_query)
+        updated["benchmark_metadata"] = metadata
+        return updated
+
+    def _attach_web_grounding_details(
+        self,
+        *,
+        payload: dict[str, object],
+        web_grounding_mode: str,
+        web_grounding_query: str,
+        web_search_response: WebSearchResponse | None,
+    ) -> dict[str, object]:
+        updated = dict(payload)
+        metadata = dict(updated.get("benchmark_metadata", {}))
+        metadata.update(
+            {
+                "web_grounding_mode": web_grounding_mode,
+                "web_grounding_query": web_grounding_query,
+                "web_grounding_used": web_search_response is not None,
+            }
+        )
+        if web_search_response is not None:
+            metadata.update(
+                {
+                    "web_grounding_provider": web_search_response.provider,
+                    "web_grounding_enabled": web_search_response.enabled,
+                    "web_grounding_degraded": web_search_response.degraded,
+                    "web_grounding_error": web_search_response.error,
+                    "web_grounding_result_count": len(web_search_response.results),
+                    "web_grounding_effective_query": web_search_response.query,
+                }
+            )
+        updated["benchmark_metadata"] = metadata
+        return updated
 
     def _extract_assistant_content(self, payload: dict[str, object]) -> str:
         answer_text = payload.get("answer_text")

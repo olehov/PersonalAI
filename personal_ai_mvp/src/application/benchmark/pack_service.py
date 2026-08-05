@@ -28,6 +28,8 @@ class RepoBenchmarkTask:
     workflow: str
     scope_dirs: tuple[str, ...] = field(default_factory=tuple)
     prompt: str = ""
+    web_grounding_mode: str = "disabled"
+    web_grounding_query: str = ""
     expected_signals: tuple[str, ...] = field(default_factory=tuple)
     anti_signals: tuple[str, ...] = field(default_factory=tuple)
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -73,6 +75,8 @@ class BenchmarkPackService:
                     "workflow": task.workflow,
                     "scope_dirs": list(task.scope_dirs),
                     "prompt": task.prompt,
+                    "web_grounding_mode": task.web_grounding_mode,
+                    "web_grounding_query": task.web_grounding_query,
                     "expected_signals": list(task.expected_signals),
                     "anti_signals": list(task.anti_signals),
                     "notes": list(task.notes),
@@ -99,6 +103,8 @@ class BenchmarkPackService:
             workflow=str(payload["workflow"]),
             scope_dirs=tuple(str(item) for item in payload.get("scope_dirs", ())),
             prompt=str(payload.get("prompt", "")),
+            web_grounding_mode=str(payload.get("web_grounding_mode", "disabled")),
+            web_grounding_query=str(payload.get("web_grounding_query", "")),
             expected_signals=tuple(str(item) for item in payload.get("expected_signals", ())),
             anti_signals=tuple(str(item) for item in payload.get("anti_signals", ())),
             notes=tuple(str(item) for item in payload.get("notes", ())),

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from application.benchmark.pack_service import RepoBenchmarkTask, RepoBenchmarkTurn
 from application.benchmark.run_service import BenchmarkRunService
+from application.web_search.service import WebSearchResponse, WebSearchResult
 from domain.models import (
     AgentRuntimeArtifact,
     GeneratedAnswer,
@@ -30,6 +31,8 @@ class BenchmarkCliTests(CliTestSupport):
                         "workflow": "agent",
                         "scope_dirs": ["Projects"],
                         "prompt": "Inspect Minishell.",
+                        "web_grounding_mode": "required",
+                        "web_grounding_query": "latest minishell parser docs",
                         "expected_signals": ["correct repo"],
                         "anti_signals": ["wrong repo"],
                         "notes": ["smoke test"],
@@ -52,6 +55,8 @@ class BenchmarkCliTests(CliTestSupport):
             self.assertEqual(payload["pack_id"], "repo-aware-v1")
             self.assertEqual(len(payload["tasks"]), 1)
             self.assertEqual(payload["tasks"][0]["workflow"], "agent")
+            self.assertEqual(payload["tasks"][0]["web_grounding_mode"], "required")
+            self.assertEqual(payload["tasks"][0]["web_grounding_query"], "latest minishell parser docs")
 
     def test_benchmark_pack_outputs_multi_turn_tasks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -531,6 +536,74 @@ class BenchmarkCliTests(CliTestSupport):
         self.assertEqual(len(second_history), 2)
         self.assertEqual(second_history[1].content, "agent-draft-1")
 
+    def test_benchmark_run_uses_forced_web_grounding_for_ask_workflow(self) -> None:
+        web_search_service = _FakeWebSearchService()
+        chat_service = _FakeChatService()
+        service = BenchmarkRunService(
+            chat_service=chat_service,
+            agent_runtime_service=_FakeAgentRuntimeService(),
+            web_search_service=web_search_service,
+        )
+        task = RepoBenchmarkTask(
+            task_id="web-grounded-bsq",
+            category="web_grounded_answer",
+            title="Web-grounded BSQ answer",
+            objective="Force a web-grounded run for comparison.",
+            workflow="ask",
+            scope_dirs=("Projects", "Languages/C"),
+            prompt="Give the latest BSQ advice.",
+            web_grounding_mode="required",
+            web_grounding_query="latest bsq c implementation best practices",
+        )
+
+        result = service.run_task(
+            pack_id="repo-aware-v1",
+            task=task,
+            model="gpt-oss:20b",
+        )
+
+        self.assertEqual(web_search_service.queries, ["latest bsq c implementation best practices"])
+        self.assertIsNotNone(chat_service.ask_calls[0]["web_search_response"])
+        self.assertEqual(
+            chat_service.ask_calls[0]["web_search_response"].query,
+            "latest bsq c implementation best practices",
+        )
+        metadata = result.result_payload["benchmark_metadata"]
+        self.assertEqual(metadata["web_grounding_mode"], "required")
+        self.assertTrue(metadata["web_grounding_used"])
+        self.assertEqual(metadata["web_grounding_effective_query"], "latest bsq c implementation best practices")
+
+    def test_benchmark_run_skips_web_grounding_when_disabled(self) -> None:
+        web_search_service = _FakeWebSearchService()
+        chat_service = _FakeChatService()
+        service = BenchmarkRunService(
+            chat_service=chat_service,
+            agent_runtime_service=_FakeAgentRuntimeService(),
+            web_search_service=web_search_service,
+        )
+        task = RepoBenchmarkTask(
+            task_id="vault-only-bsq",
+            category="vault_only_answer",
+            title="Vault-only BSQ answer",
+            objective="Keep the same prompt without web grounding.",
+            workflow="ask",
+            scope_dirs=("Projects", "Languages/C"),
+            prompt="Give the latest BSQ advice.",
+            web_grounding_mode="disabled",
+        )
+
+        result = service.run_task(
+            pack_id="repo-aware-v1",
+            task=task,
+            model="gpt-oss:20b",
+        )
+
+        self.assertEqual(web_search_service.queries, [])
+        self.assertIsNone(chat_service.ask_calls[0]["web_search_response"])
+        metadata = result.result_payload["benchmark_metadata"]
+        self.assertEqual(metadata["web_grounding_mode"], "disabled")
+        self.assertFalse(metadata["web_grounding_used"])
+
 
 class _FakeChatService:
     def __init__(self) -> None:
@@ -544,6 +617,7 @@ class _FakeChatService:
         scope_dirs: tuple[str, ...] = (),
         conversation_history: tuple[PromptMessage, ...] = (),
         reasoning_mode: str = "standard",
+        web_search_response: WebSearchResponse | None = None,
     ) -> GeneratedAnswer:
         self.ask_calls.append(
             {
@@ -552,6 +626,7 @@ class _FakeChatService:
                 "scope_dirs": scope_dirs,
                 "conversation_history": conversation_history,
                 "reasoning_mode": reasoning_mode,
+                "web_search_response": web_search_response,
             }
         )
         return GeneratedAnswer(
@@ -568,6 +643,7 @@ class _FakeChatService:
         scope_dirs: tuple[str, ...] = (),
         conversation_history: tuple[PromptMessage, ...] = (),
         reasoning_mode: str = "standard",
+        web_search_response: WebSearchResponse | None = None,
     ) -> GeneratedAnswer:
         return self.ask(
             question,
@@ -575,6 +651,7 @@ class _FakeChatService:
             scope_dirs=scope_dirs,
             conversation_history=conversation_history,
             reasoning_mode=reasoning_mode,
+            web_search_response=web_search_response,
         )
 
 
@@ -611,4 +688,29 @@ class _FakeAgentRuntimeService:
             status="needs_execution_layer",
             scope_dirs=scope_dirs,
             final_output=f"agent-draft-{index}",
+        )
+
+
+class _FakeWebSearchService:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    def search(self, query: str) -> WebSearchResponse:
+        self.queries.append(query)
+        return WebSearchResponse(
+            query=query,
+            provider="fake-search",
+            results=(
+                WebSearchResult(
+                    title="BSQ reference",
+                    url="https://example.com/bsq",
+                    snippet="Fresh BSQ guidance.",
+                    source="example.com",
+                ),
+            ),
+            enabled=True,
+            original_query=query,
+            requested_max_results=1,
+            applied_max_results=1,
+            raw_result_count=1,
         )

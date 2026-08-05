@@ -97,6 +97,7 @@ def build_cli_runtime(
     benchmark_run_service = BenchmarkRunService(
         chat_service,
         agent_runtime_service,
+        web_search_service,
         history_repository,
     )
     training_corpus_service = TrainingCorpusService(knowledge_service)
