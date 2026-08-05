@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "personal-ai"
 version = "0.1.0"
 description = "Local-first AI developer assistant MVP for Obsidian knowledge access."
-readme = "README.md"
+readme = "../README.md"
 requires-python = ">=3.10"
 
 [project.scripts]

@@ -61,7 +61,7 @@ High-level responsibilities:
 - `infrastructure/` handles config, vault IO, LLM clients, history, and web search
 - `cli_app/` and `web_app/` expose local product entrypoints
 
-See [docs/architecture.md](docs/architecture.md) for the fuller breakdown.
+See [personal_ai_mvp/docs/architecture.md](personal_ai_mvp/docs/architecture.md) for the fuller breakdown.
 
 ## Current Components
 
@@ -106,7 +106,7 @@ See [docs/architecture.md](docs/architecture.md) for the fuller breakdown.
 ### 1. Configure the environment
 
 ```powershell
-Copy-Item .env.example .env
+Copy-Item personal_ai_mvp/.env.example personal_ai_mvp/.env
 ```
 
 Important settings include:
@@ -124,12 +124,14 @@ Important settings include:
 ### 2. Start the local stack
 
 ```powershell
+cd personal_ai_mvp
 npm run runtime:start
 ```
 
 Useful runtime commands:
 
 ```powershell
+cd personal_ai_mvp
 npm run runtime:status
 npm run runtime:restart
 npm run runtime:stop
@@ -141,12 +143,14 @@ npm run runtime:start:frontend
 ### 3. Run tests
 
 ```powershell
+cd personal_ai_mvp
 cmd /c "set PYTHONPATH=src&& python -m unittest discover -s tests"
 ```
 
 Focused benchmark regression suite:
 
 ```powershell
+cd personal_ai_mvp
 cmd /c "set PYTHONPATH=src&& python -m unittest tests.test_cli_benchmark"
 ```
 
@@ -170,11 +174,11 @@ personal_ai_mvp/
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [API](docs/api.md)
-- [Benchmarks](docs/benchmarks.md)
-- [Development](docs/development.md)
-- [Roadmap](docs/roadmap.md)
+- [Architecture](personal_ai_mvp/docs/architecture.md)
+- [API](personal_ai_mvp/docs/api.md)
+- [Benchmarks](personal_ai_mvp/docs/benchmarks.md)
+- [Development](personal_ai_mvp/docs/development.md)
+- [Roadmap](personal_ai_mvp/docs/roadmap.md)
 
 ## Demo
 
